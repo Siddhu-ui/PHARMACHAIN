@@ -2,7 +2,8 @@ import {
   User, Batch, BatchEvent, ReturnRequest, Pickup,
   DestructionRecord, FraudIncident, Alert, ScanVerifyResponse,
   OCRAnalyzeResponse, DashboardStats, Role,
-  Product, ProductRegisterRequest, RetailerVerifyRequest, RetailerVerifyResponse
+  Product, ProductRegisterRequest, RetailerVerifyRequest, RetailerVerifyResponse,
+  ManufacturerDashboardResponse, RetailerDashboardResponse, DistributorDashboardResponse
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -223,6 +224,15 @@ export const api = {
   async getDashboardStats(): Promise<DashboardStats> {
     return request('/dashboard/stats');
   },
+  async getManufacturerDashboard(): Promise<ManufacturerDashboardResponse> {
+    return request('/dashboard/manufacturer');
+  },
+  async getRetailerDashboard(): Promise<RetailerDashboardResponse> {
+    return request('/dashboard/retailer');
+  },
+  async getDistributorDashboard(): Promise<DistributorDashboardResponse> {
+    return request('/dashboard/distributor');
+  },
 
   // Demo Controls
   async resetDemo(): Promise<{ message: string }> {
@@ -259,5 +269,94 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     });
+  },
+
+  // Serialized Products & Chain of Custody
+  async getSerials(params: {
+    batch_id?: string;
+    holder_type?: string;
+    retailer_id?: string;
+    distributor_id?: string;
+    status?: string;
+  } = {}): Promise<import('../types').ProductUnit[]> {
+    const query = new URLSearchParams();
+    if (params.batch_id) query.set('batch_id', params.batch_id);
+    if (params.holder_type) query.set('holder_type', params.holder_type);
+    if (params.retailer_id) query.set('retailer_id', params.retailer_id);
+    if (params.distributor_id) query.set('distributor_id', params.distributor_id);
+    if (params.status) query.set('status', params.status);
+    const qs = query.toString();
+    return request(`/serials${qs ? `?${qs}` : ''}`);
+  },
+  async getSerialDetail(serialCode: string): Promise<import('../types').SerialDetailResponse> {
+    return request(`/serials/${serialCode}`);
+  },
+  async allocateSerials(data: {
+    distributor_id: string;
+    retailer_id: string;
+    retailer_name: string;
+    batch_number: string;
+    quantity?: number;
+    serial_codes?: string[];
+  }): Promise<{ message: string; allocated_count: number; units: import('../types').ProductUnit[] }> {
+    return request('/serials/allocate', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+  async dispenseSerial(data: {
+    serial_code: string;
+    retailer_id?: string;
+    retailer_name?: string;
+    patient_identifier?: string;
+  }): Promise<{ message: string; serial_code: string; product_status: string; timestamp: string }> {
+    return request('/serials/dispense', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+  async getDistributorInventory(distributorId: string): Promise<any> {
+    return request(`/serials/distributor/${distributorId}/inventory`);
+  },
+
+  // Role Portals
+  async getManufacturerMedicines(): Promise<any[]> {
+    return request('/roles/manufacturer/medicines');
+  },
+  async getManufacturerDistributors(): Promise<any[]> {
+    return request('/roles/manufacturer/distributors');
+  },
+  async getManufacturerDistributorDetail(id: string): Promise<any> {
+    return request(`/roles/manufacturer/distributors/${id}`);
+  },
+  async getManufacturerRetailers(): Promise<any[]> {
+    return request('/roles/manufacturer/retailers');
+  },
+  async getManufacturerRetailerDetail(id: string): Promise<any> {
+    return request(`/roles/manufacturer/retailers/${id}`);
+  },
+  async getManufacturerAlerts(): Promise<any[]> {
+    return request('/roles/manufacturer/alerts');
+  },
+
+  async getDistributorMedicines(): Promise<import('../types').DistributorAccountingItem[]> {
+    return request('/roles/distributor/medicines');
+  },
+  async getDistributorRetailers(): Promise<any[]> {
+    return request('/roles/distributor/retailers');
+  },
+  async getDistributorRetailerDetail(id: string): Promise<any> {
+    return request(`/roles/distributor/retailers/${id}`);
+  },
+  async getDistributorPickups(): Promise<any[]> {
+    return request('/roles/distributor/pickups');
+  },
+
+  async getRetailerInventory(retailerId?: string): Promise<any[]> {
+    return request(`/roles/retailer/inventory${retailerId ? `?retailer_id=${retailerId}` : ''}`);
+  },
+  async getRetailerAlerts(): Promise<any[]> {
+    return request('/roles/retailer/alerts');
   }
 };
+

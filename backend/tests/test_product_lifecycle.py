@@ -76,7 +76,7 @@ def test_retailer_verification_valid_package(db_session):
         strength="500mg",
         batch_id="PCM-BATCH-001",
         manufacturing_date=datetime(2024, 8, 15),
-        expiry_date=datetime(2026, 8, 15),
+        expiry_date=datetime(2026, 12, 31),
         manufacturer="ABC Pharma",
         assigned_retailer="Pharmacy A",
         quantity=100
@@ -88,7 +88,7 @@ def test_retailer_verification_valid_package(db_session):
         product_id=prod.product_id,
         qr_detected=True,
         package_image_url="blister_valid.png",
-        printed_expiry_override="15/08/2026",
+        printed_expiry_override="31/12/2026",
         location="Pharmacy A"
     )
     res = verify_retailer_package(verify_req, db_session)
@@ -107,17 +107,17 @@ def test_retailer_verification_label_tampering(db_session):
         strength="500mg",
         batch_id="PCM-BATCH-TAMPER",
         manufacturing_date=datetime(2024, 8, 15),
-        expiry_date=datetime(2026, 8, 15), # Registered 2026
+        expiry_date=datetime(2026, 12, 31), # Registered 2026
         manufacturer="ABC Pharma",
         assigned_retailer="Pharmacy A"
     )
     prod = register_product(req, db_session)
 
-    # Fraudster printed expiry 15/08/2028
+    # Fraudster printed expiry 31/12/2028
     verify_req = RetailerVerifyRequest(
         product_id=prod.product_id,
         qr_detected=True,
-        printed_expiry_override="15/08/2028",
+        printed_expiry_override="31/12/2028",
         location="Pharmacy A"
     )
     res = verify_retailer_package(verify_req, db_session)

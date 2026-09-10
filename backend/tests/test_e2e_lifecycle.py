@@ -22,7 +22,7 @@ def test_e2e_complete_story(client):
         "strength": "500mg",
         "batch_id": "PCM-BATCH-TEST",
         "manufacturing_date": "2024-08-15T00:00:00",
-        "expiry_date": "2026-08-15T00:00:00",
+        "expiry_date": "2026-12-31T00:00:00",
         "manufacturer": "ABC Pharma",
         "assigned_retailer": "Pharmacy A",
         "quantity": 100
@@ -36,7 +36,7 @@ def test_e2e_complete_story(client):
     assert prod["qr_payload"] == prod["product_id"]
     # Check that metadata is NOT in QR payload
     assert "Paracetamol" not in prod["qr_payload"]
-    assert "15/08/2026" not in prod["qr_payload"]
+    assert "31/12/2026" not in prod["qr_payload"]
 
     product_id = prod["product_id"]
 
@@ -55,7 +55,7 @@ def test_e2e_complete_story(client):
         "product_id": product_id,
         "qr_detected": True,
         "package_image_url": "blister_valid.png",
-        "printed_expiry_override": "15/08/2026",
+        "printed_expiry_override": "31/12/2026",
         "location": "Pharmacy A",
         "scanner_role": "RETAILER"
     }
@@ -74,7 +74,7 @@ def test_e2e_complete_story(client):
     verify_tamper = {
         "product_id": product_id,
         "qr_detected": True,
-        "printed_expiry_override": "15/08/2028", # Fraudulent extension
+        "printed_expiry_override": "31/12/2028", # Fraudulent extension
         "location": "Pharmacy A",
         "scanner_role": "RETAILER"
     }

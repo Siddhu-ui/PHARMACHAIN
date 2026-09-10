@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-type DemoPreset = 'valid' | 'tampered' | 'unknown' | 'expired' | 'reentry';
+type DemoPreset = 'valid' | 'tampered' | 'unknown' | 'expired' | 'reentry' | 'mismatch_loc';
 
 export const VerifyMedicinePage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -24,7 +24,7 @@ export const VerifyMedicinePage: React.FC = () => {
   const [fileError, setFileError] = useState<string | null>(null);
 
   // Manual / Detected QR Product ID
-  const [detectedProductId, setDetectedProductId] = useState<string>('PG-PCM-2026-000123');
+  const [detectedProductId, setDetectedProductId] = useState<string>('PG-PCM-2026-000001');
   const [isQrDetected, setIsQrDetected] = useState<boolean>(true);
   const [isQrScanning, setIsQrScanning] = useState<boolean>(false);
   const [qrStatusNote, setQrStatusNote] = useState<string>('QR Code decoded from package image');
@@ -33,6 +33,11 @@ export const VerifyMedicinePage: React.FC = () => {
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState<RetailerVerifyResponse | null>(null);
   const [activeStep, setActiveStep] = useState<number>(0);
+
+  // Dispense / Sale State
+  const [dispensing, setDispensing] = useState(false);
+  const [isDispensed, setIsDispensed] = useState(false);
+  const [dispenseMsg, setDispenseMsg] = useState<string | null>(null);
 
   // Preset demo mode
   const [currentPreset, setCurrentPreset] = useState<DemoPreset>('valid');
@@ -110,6 +115,8 @@ export const VerifyMedicinePage: React.FC = () => {
     setSelectedFile(file);
     setFileError(null);
     setVerifyResult(null);
+    setIsDispensed(false);
+    setDispenseMsg(null);
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -124,13 +131,15 @@ export const VerifyMedicinePage: React.FC = () => {
     setCurrentPreset(preset);
     setVerifyResult(null);
     setFileError(null);
+    setIsDispensed(false);
+    setDispenseMsg(null);
 
     switch (preset) {
       case 'valid':
         setImagePreview('/blister_valid_pcm.svg');
-        setDetectedProductId('PG-PCM-2026-000123');
+        setDetectedProductId('PG-PCM-2026-000001');
         setIsQrDetected(true);
-        setQrStatusNote('Demo Package: Paracetamol 500mg (Valid)');
+        setQrStatusNote('Demo Package: Paracetamol 500mg (Valid - In Pharmacy A stock)');
         break;
       case 'tampered':
         setImagePreview('/blister_tampered_pcm.svg');
@@ -146,7 +155,7 @@ export const VerifyMedicinePage: React.FC = () => {
         break;
       case 'expired':
         setImagePreview('/blister_valid_pcm.svg');
-        setDetectedProductId('PG-PCM-2026-500123');
+        setDetectedProductId('PG-PCM-2024-888001');
         setIsQrDetected(true);
         setQrStatusNote('Demo Package: Expired batch (Return required)');
         break;
@@ -156,6 +165,32 @@ export const VerifyMedicinePage: React.FC = () => {
         setIsQrDetected(true);
         setQrStatusNote('Demo Package: Verified destroyed medicine re-entry (PCM999888)');
         break;
+      case 'mismatch_loc':
+        setImagePreview('/blister_valid_pcm.svg');
+        setDetectedProductId('PG-PCM-2026-000010');
+        setIsQrDetected(true);
+        setQrStatusNote('Demo Package: Stock belonging to Pharmacy B scanned at Pharmacy A');
+        break;
+    }
+  };
+
+  const handleAllowSale = async () => {
+    if (!verifyResult?.product_id) return;
+    setDispensing(true);
+    setDispenseMsg(null);
+    try {
+      const res = await api.dispenseSerial({
+        serial_code: verifyResult.product_id,
+        retailer_id: currentUser?.organization_id,
+        retailer_name: currentUser?.organization || 'Pharmacy A'
+      });
+      setIsDispensed(true);
+      setDispenseMsg(res.message || `Serial ${verifyResult.product_id} dispensed. Stock decremented.`);
+      confetti({ particleCount: 80, spread: 90, origin: { y: 0.6 } });
+    } catch (err: any) {
+      setDispenseMsg(`Dispense failed: ${err.message}`);
+    } finally {
+      setDispensing(false);
     }
   };
 
@@ -294,11 +329,24 @@ export const VerifyMedicinePage: React.FC = () => {
             onClick={() => loadPreset('reentry')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
               currentPreset === 'reentry'
-                ? 'bg-rose-900 text-rose-200 border border-rose-500 shadow-md'
+                ? 'bg-red-700 text-white shadow-md shadow-red-700/40 ring-2 ring-red-400'
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
-            <span>🚨 Case E: Re-Entry Fraud (PCM999888)</span>
+            <span className="animate-pulse">🚨</span>
+            <span>Case E: PCM999888 Re-Entry Fraud (95/100 CRITICAL)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadPreset('mismatch_loc')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              currentPreset === 'mismatch_loc'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>⚠️ Case F: Distribution Location Mismatch</span>
           </button>
         </div>
       </div>
@@ -561,6 +609,42 @@ export const VerifyMedicinePage: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+
+              {/* ALLOW SALE Dispensation Action (Section AA & AP) */}
+              {verifyResult.allow_sale && (
+                <div className="p-5 rounded-3xl bg-emerald-950/40 border border-emerald-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl shadow-emerald-950/40">
+                  <div>
+                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span>Product Verified & Eligible for Dispensation</span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-1">
+                      Package matches registered manufacturer record and is within valid expiry period.
+                    </p>
+                    {dispenseMsg && (
+                      <div className="mt-2 text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 p-2 rounded-xl border border-emerald-500/40">
+                        {dispenseMsg}
+                      </div>
+                    )}
+                  </div>
+
+                  {!isDispensed ? (
+                    <button
+                      onClick={handleAllowSale}
+                      disabled={dispensing}
+                      className="px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-400 to-teal-300 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/30 transition uppercase tracking-wider shrink-0 flex items-center gap-2"
+                    >
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span>{dispensing ? 'Recording Sale...' : 'ALLOW SALE'}</span>
+                    </button>
+                  ) : (
+                    <div className="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold text-xs shrink-0 flex items-center gap-1.5">
+                      <Check className="w-4 h-4" />
+                      <span>DISPENSED TO PATIENT</span>
+                    </div>
+                  )}
                 </div>
               )}
 

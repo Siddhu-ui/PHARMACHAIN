@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.models.models import Batch, Medicine, Organization, BatchEvent, FraudIncident, Scan
+from app.models.models import Batch, Medicine, Organization, BatchEvent, FraudIncident, Scan, ProductUnit, CustodyTransfer
 from app.schemas.schemas import (
     ProductRegisterRequest, ProductResponse, ProductAssignRetailerRequest,
     RetailerVerifyRequest, RetailerVerifyResponse
@@ -252,12 +252,54 @@ def get_product_qr(product_id: str, db: Session = Depends(get_db)):
 def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depends(get_db)):
     now = datetime.utcnow()
 
+    def finish_and_record(resp: RetailerVerifyResponse, v_result: str, b_id: Optional[str] = None, u_id: Optional[str] = None, s_code: Optional[str] = None):
+        try:
+            scan_entry = Scan(
+                batch_id=b_id,
+                batch_number=resp.batch_number or (request.product_id if request.product_id else None),
+                product_unit_id=u_id,
+                serial_code=s_code or resp.serial_code or resp.product_id,
+                retailer_name=request.location,
+                database_result="MATCH" if (b_id or u_id) else "NOT_FOUND",
+                expiry_result=resp.expiry_status or "VALID",
+                verdict=v_result,
+                scanner_role=request.scanner_role,
+                location=request.location,
+                scan_type="OCR+QR" if (request.package_image_url and request.qr_detected) else ("QR" if request.qr_detected else "OCR"),
+                qr_data=resp.product_id or request.product_id,
+                ocr_data=json.dumps({
+                    "medicine": resp.medicine_name,
+                    "batch": resp.batch_number,
+                    "expiry": resp.detected_expiry,
+                    "mfr": resp.manufacturer
+                }),
+                image_url=request.package_image_url,
+                timestamp=now,
+                verification_result=v_result,
+                risk_score=resp.risk_score,
+                reasons_json=json.dumps({
+                    "title": resp.title,
+                    "verdict": resp.status_verdict,
+                    "message": resp.message,
+                    "recommendation": resp.recommendation,
+                    "severity": resp.severity,
+                    "incident_type": v_result
+                })
+            )
+            db.add(scan_entry)
+            db.commit()
+        except Exception as e:
+            print(f"Error recording scan: {e}")
+            db.rollback()
+        return resp
+
     # Step 1: Check QR Detection
     if not request.qr_detected or not request.product_id or not request.product_id.strip():
-        return RetailerVerifyResponse(
+        resp = RetailerVerifyResponse(
             status_verdict="QR_NOT_DETECTED",
             title="QR CODE NOT DETECTED",
             product_id=None,
+            serial_code=None,
             medicine_name=request.medicine_name_ocr,
             batch_number=request.batch_ocr,
             registered_expiry=None,
@@ -265,6 +307,7 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
             manufacturer=request.manufacturer_ocr,
             assigned_retailer=request.location,
             lifecycle_status="UNVERIFIED",
+            expiry_status="UNKNOWN",
             message="Unable to verify Product ID from this image. Package QR code could not be resolved.",
             risk_score=50,
             severity="MEDIUM",
@@ -275,30 +318,68 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
                 "lifecycle_valid": False
             },
             comparison=[],
-            recommendation="Unable to verify Product ID from this image. Position package QR clearly or select a demo preset."
+            recommendation="Unable to verify Product ID from this image. Position package QR clearly or select a demo preset.",
+            allow_sale=False
         )
+        return finish_and_record(resp, "UNVERIFIED", None, None, None)
 
     target_id = request.product_id.strip()
 
-    # Step 2: Database Lookup in Trusted Manufacturer Ledger
-    batch = db.query(Batch).filter(
-        (Batch.product_id == target_id) | (Batch.batch_number == target_id) | (Batch.id == target_id)
+    # Step 2: Database Lookup in Trusted Manufacturer Ledger (Check ProductUnit first, then Batch)
+    unit = db.query(ProductUnit).filter(
+        (ProductUnit.serial_code == target_id) | (ProductUnit.id == target_id)
     ).first()
 
+    batch = None
+    if unit:
+        batch = unit.batch
+    else:
+        batch = db.query(Batch).filter(
+            (Batch.product_id == target_id) | (Batch.batch_number == target_id) | (Batch.id == target_id)
+        ).first()
+
     # Case C: Unknown Product (Not Found in Database)
-    if not batch:
-        return RetailerVerifyResponse(
+    if not unit and not batch:
+        # Create alerts for unknown product
+        try:
+            AlertService.create_alert(
+                db=db,
+                serial_code=target_id,
+                alert_type="UNKNOWN_PRODUCT",
+                recipient_role="RETAILER",
+                recipient_name=request.location,
+                severity="HIGH",
+                message=f"UNKNOWN PRODUCT: Serial {target_id} scanned at {request.location} is not registered in the PharmaGuard database.",
+                action_url="/retailer/verify"
+            )
+            AlertService.create_alert(
+                db=db,
+                serial_code=target_id,
+                alert_type="UNKNOWN_PRODUCT",
+                recipient_role="MANUFACTURER",
+                recipient_name="All Manufacturers",
+                severity="HIGH",
+                message=f"SECURITY ALERT: Unregistered serial {target_id} scanned at {request.location}.",
+                action_url="/manufacturer/alerts"
+            )
+        except Exception:
+            pass
+
+        resp = RetailerVerifyResponse(
             status_verdict="UNKNOWN_PRODUCT",
-            title="🔴 UNKNOWN PRODUCT",
+            title="🚨 UNKNOWN PRODUCT",
             product_id=target_id,
+            serial_code=target_id,
             medicine_name=request.medicine_name_ocr or "Unregistered Medicine",
             batch_number=request.batch_ocr or target_id,
             registered_expiry="NOT REGISTERED",
             detected_expiry=request.expiry_ocr or request.printed_expiry_override or "10/01/2027",
             manufacturer=request.manufacturer_ocr or "Unverified Manufacturer",
             assigned_retailer="None",
+            scanning_retailer=request.location,
             lifecycle_status="NO RECORD",
-            message="Product ID is not present in the registered supply-chain database.",
+            expiry_status="UNREGISTERED",
+            message="Product ID is not present in the registered supply-chain database. This serial code is not registered in the PharmaGuard manufacturer database.",
             risk_score=80,
             severity="HIGH",
             checks={
@@ -308,22 +389,37 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
                 "lifecycle_valid": False
             },
             comparison=[
-                {"field": "Product ID", "detected": target_id, "registered": "NOT FOUND", "match": False},
+                {"field": "Serial Code", "detected": target_id, "registered": "NOT FOUND", "match": False},
                 {"field": "Medicine", "detected": request.medicine_name_ocr or "Unregistered", "registered": "NO RECORD", "match": False},
                 {"field": "Batch", "detected": request.batch_ocr or target_id, "registered": "NO RECORD", "match": False},
                 {"field": "Status", "detected": "Physical Package", "registered": "UNREGISTERED", "match": False}
             ],
-            recommendation="DO NOT ACCEPT OR DISPENSE: Product identity is not present in the manufacturer ledger."
+            recommendation="DO NOT ACCEPT OR DISPENSE: Product identity is not present in the manufacturer ledger.",
+            allow_sale=False
         )
+        return finish_and_record(resp, "UNKNOWN_PRODUCT", None, None, target_id)
 
     # Extract Trusted DB Values
-    reg_product_id = batch.product_id or target_id
-    reg_medicine = batch.medicine.name if batch.medicine else "Paracetamol 500mg"
-    reg_batch = batch.batch_number
-    reg_expiry = batch.expiry_date.strftime("%d/%m/%Y")
-    reg_mfr = batch.manufacturer_name or (batch.medicine.manufacturer if batch.medicine else "ABC Pharma")
-    reg_retailer = batch.assigned_retailer_name or batch.current_location
-    reg_status = batch.status
+    reg_serial = unit.serial_code if unit else (batch.product_id or target_id)
+    reg_product_id = reg_serial
+    if unit:
+        reg_medicine = unit.medicine.name if unit.medicine else (batch.medicine.name if batch and batch.medicine else "Medicine")
+        reg_batch = unit.batch_number
+        reg_expiry = unit.expiry_date.strftime("%d/%m/%Y") if unit.expiry_date else (batch.expiry_date.strftime("%d/%m/%Y") if batch and batch.expiry_date else "15/08/2027")
+        reg_mfr = (unit.batch.manufacturer_name if unit.batch and unit.batch.manufacturer_name else (unit.batch.medicine.manufacturer if unit.batch and unit.batch.medicine else "ABC Pharma")) if unit.batch else "ABC Pharma"
+        reg_retailer = unit.current_holder_name or (batch.assigned_retailer_name if batch else "Pharmacy A")
+        reg_status = unit.product_status
+        reg_dosage = unit.dosage_strength or (batch.dosage_strength if batch else "500mg")
+        reg_distributor = "ABC Distribution"
+    else:
+        reg_medicine = batch.medicine.name if batch.medicine else "Paracetamol 500mg"
+        reg_batch = batch.batch_number
+        reg_expiry = batch.expiry_date.strftime("%d/%m/%Y") if batch.expiry_date else "15/08/2027"
+        reg_mfr = batch.manufacturer_name or (batch.medicine.manufacturer if batch.medicine else "ABC Pharma")
+        reg_retailer = batch.assigned_retailer_name or batch.current_location or "Pharmacy A"
+        reg_status = batch.status
+        reg_dosage = batch.dosage_strength or (batch.medicine.dosage if batch.medicine else "500mg")
+        reg_distributor = "ABC Distribution"
 
     # Extracted / Detected Values (from OCR or request overrides)
     det_medicine = request.medicine_name_ocr or reg_medicine
@@ -334,44 +430,80 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
     img_name_lower = (request.package_image_url or "").lower()
 
     # Step 3 & 4: Check Destroyed / Closed Re-entry Fraud (Case E - P0 CRITICAL)
-    is_destroyed = (
-        BatchStateMachine.is_destroyed_or_closed(batch.status)
-        or batch.status == BatchStatus.REENTRY_DETECTED
-        or "pcm999888" in target_id.lower()
-        or "reentry" in img_name_lower
-        or "destroyed" in img_name_lower
-    )
+    is_destroyed = False
+    if unit and unit.product_status in ["CLOSED", "DESTRUCTION_VERIFIED", "REENTRY_DETECTED"]:
+        is_destroyed = True
+    elif batch and (BatchStateMachine.is_destroyed_or_closed(batch.status) or batch.status == BatchStatus.REENTRY_DETECTED):
+        is_destroyed = True
+    elif "pcm999888" in target_id.lower() or "reentry" in img_name_lower or "destroyed" in img_name_lower:
+        is_destroyed = True
 
     if is_destroyed:
         # Create Critical Fraud Incident & Regulator Alert
         incident = AlertService.create_fraud_incident(
             db=db,
-            batch_id=batch.id,
+            batch_id=batch.id if batch else (unit.batch_id if unit else "demo"),
             incident_type="REENTRY_FRAUD",
             risk_score=95,
             severity="CRITICAL",
             description=(
-                f"RE-ENTRY FRAUD: Product {reg_product_id} (Batch {batch.batch_number}) "
+                f"RE-ENTRY FRAUD: Serial {reg_serial} (Batch {reg_batch}) "
                 f"was certified destroyed at EcoSafe Bio-Medical Facility. "
                 f"It was just scanned at an unauthorized retail location: '{request.location}'."
             ),
             evidence={
+                "serial_code": reg_serial,
                 "product_id": reg_product_id,
-                "batch_number": batch.batch_number,
+                "batch_number": reg_batch,
                 "original_status": "DESTRUCTION_VERIFIED",
                 "scanned_location": request.location,
                 "scanner_role": request.scanner_role
             }
         )
 
-        batch.status = BatchStatus.REENTRY_DETECTED
-        batch.current_location = f"{request.location} (RE-ENTRY FRAUD)"
-        batch.updated_at = now
+        if unit:
+            unit.product_status = "REENTRY_DETECTED"
+        if batch:
+            batch.status = BatchStatus.REENTRY_DETECTED
+            batch.current_location = f"{request.location} (RE-ENTRY FRAUD)"
+            batch.updated_at = now
         db.commit()
+
+        # Create dual alerts for retailer and manufacturer
+        AlertService.create_alert(
+            db=db,
+            recipient_role="RETAILER",
+            message=f"CRITICAL: Serial {reg_serial} previously destroyed. Potential re-entry fraud detected at your store.",
+            severity="CRITICAL",
+            incident_id=incident.id,
+            batch_id=batch.id if batch else None,
+            product_id=unit.id if unit else None,
+            serial_code=reg_serial,
+            batch_number=reg_batch,
+            medicine_name=reg_medicine,
+            alert_type="RE_ENTRY_FRAUD",
+            recipient_name=request.location,
+            action_url=f"/retailer/medicines/{reg_serial}"
+        )
+        AlertService.create_alert(
+            db=db,
+            recipient_role="MANUFACTURER",
+            message=f"CRITICAL: Destroyed serial {reg_serial} resurfaced at '{request.location}'. Immediate regulatory alert generated.",
+            severity="CRITICAL",
+            incident_id=incident.id,
+            batch_id=batch.id if batch else None,
+            product_id=unit.id if unit else None,
+            serial_code=reg_serial,
+            batch_number=reg_batch,
+            medicine_name=reg_medicine,
+            alert_type="RE_ENTRY_FRAUD",
+            recipient_name=reg_mfr,
+            action_url=f"/manufacturer/products/{reg_serial}"
+        )
 
         LedgerService.record_event(
             db=db,
-            batch_id=batch.id,
+            batch_id=batch.id if batch else "demo",
             event_type="REENTRY_DETECTED",
             actor_name=f"Scanner ({request.scanner_role})",
             location=request.location,
@@ -382,18 +514,23 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
             }
         )
 
-        return RetailerVerifyResponse(
+        resp = RetailerVerifyResponse(
             status_verdict="REENTRY_FRAUD",
             title="🚨 POTENTIAL RE-ENTRY FRAUD",
             product_id=reg_product_id,
+            serial_code=reg_serial,
             medicine_name=reg_medicine,
+            dosage_strength=reg_dosage,
             batch_number=reg_batch,
             registered_expiry=reg_expiry,
             detected_expiry=det_expiry,
             manufacturer=reg_mfr,
+            distributor=reg_distributor,
             assigned_retailer=reg_retailer,
-            lifecycle_status="DESTRUCTION_VERIFIED / RE-ENTRY DETECTED",
-            message="CRITICAL COMPLIANCE BREACH: This product was previously certified destroyed. Re-entry fraud detected.",
+            scanning_retailer=request.location,
+            lifecycle_status="CLOSED / RE-ENTRY DETECTED",
+            expiry_status=unit.expiry_status if unit else "EXPIRED",
+            message="CRITICAL COMPLIANCE BREACH: This product was previously certified destroyed. Potential re-entry fraud detected.",
             risk_score=95,
             severity="CRITICAL",
             checks={
@@ -404,21 +541,90 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
                 "reentry_flag": True
             },
             comparison=[
-                {"field": "Product ID", "detected": reg_product_id, "registered": reg_product_id, "match": True},
+                {"field": "Serial Code", "detected": reg_serial, "registered": reg_serial, "match": True},
                 {"field": "Medicine", "detected": det_medicine, "registered": reg_medicine, "match": True},
                 {"field": "Batch Number", "detected": det_batch, "registered": reg_batch, "match": True},
                 {"field": "Expiry Date", "detected": det_expiry, "registered": reg_expiry, "match": True},
-                {"field": "Ledger Status", "detected": "Physical Package", "registered": "DESTRUCTION_VERIFIED", "match": False}
+                {"field": "Ledger Status", "detected": "Physical Package", "registered": "CLOSED / DESTROYED", "match": False}
             ],
             incident_id=incident.id,
-            recommendation="DO NOT ACCEPT OR DISPENSE: Previously destroyed batch re-entry detected. Quarantine batch immediately."
+            recommendation="DO NOT ACCEPT OR DISPENSE: Potential re-entry fraud. Product was certified destroyed. Quarantine package immediately.",
+            allow_sale=False
         )
+        return finish_and_record(resp, "REENTRY_FRAUD", batch.id if batch else None, unit.id if unit else None, reg_serial)
 
-    # Step 5: Check Label Tampering (Case B)
+    # Step 5: Check Location Mismatch (Section AE)
+    is_location_mismatch = False
+    if unit and unit.current_holder_name and request.location:
+        def get_pharmacy_norm(name: str) -> str:
+            n = name.lower()
+            if "pharmacy a" in n or "apollo" in n:
+                return "pharmacy_a"
+            if "pharmacy b" in n or "medplus" in n:
+                return "pharmacy_b"
+            if "pharmacy c" in n or "carewell" in n:
+                return "pharmacy_c"
+            return n.strip()
+
+        key_reg = get_pharmacy_norm(unit.current_holder_name)
+        key_scan = get_pharmacy_norm(request.location)
+        if key_reg in ["pharmacy_a", "pharmacy_b", "pharmacy_c"] and key_scan in ["pharmacy_a", "pharmacy_b", "pharmacy_c"]:
+            if key_reg != key_scan:
+                is_location_mismatch = True
+
+    if is_location_mismatch:
+        AlertService.create_location_mismatch_alerts(
+            db=db,
+            serial_code=reg_serial,
+            medicine_name=reg_medicine,
+            batch_number=reg_batch,
+            registered_retailer=reg_retailer,
+            scanning_retailer=request.location
+        )
+        resp = RetailerVerifyResponse(
+            status_verdict="LOCATION_MISMATCH",
+            title="🚨 DISTRIBUTION / LOCATION MISMATCH",
+            product_id=reg_product_id,
+            serial_code=reg_serial,
+            medicine_name=reg_medicine,
+            dosage_strength=reg_dosage,
+            batch_number=reg_batch,
+            registered_expiry=reg_expiry,
+            detected_expiry=det_expiry,
+            manufacturer=reg_mfr,
+            distributor=reg_distributor,
+            assigned_retailer=reg_retailer,
+            scanning_retailer=request.location,
+            lifecycle_status=reg_status,
+            expiry_status=unit.expiry_status if unit else "VALID",
+            message=f"Distribution mismatch: Registered to '{reg_retailer}', but scanned at '{request.location}'.",
+            risk_score=75,
+            severity="HIGH",
+            checks={
+                "qr_detected": True,
+                "db_lookup": True,
+                "ocr_match": True,
+                "location_match": False,
+                "lifecycle_valid": False
+            },
+            comparison=[
+                {"field": "Serial Code", "detected": reg_serial, "registered": reg_serial, "match": True},
+                {"field": "Retailer Location", "detected": request.location, "registered": reg_retailer, "match": False},
+                {"field": "Medicine", "detected": det_medicine, "registered": reg_medicine, "match": True},
+                {"field": "Batch Number", "detected": det_batch, "registered": reg_batch, "match": True},
+                {"field": "Expiry Date", "detected": det_expiry, "registered": reg_expiry, "match": True}
+            ],
+            recommendation="DO NOT SELL UNTIL INVESTIGATED: Product is registered to a different retail facility. Anomaly alert sent to manufacturer.",
+            allow_sale=False
+        )
+        return finish_and_record(resp, "LOCATION_MISMATCH", batch.id if batch else None, unit.id if unit else None, reg_serial)
+
+    # Step 6: Check Label Tampering (Section AC)
     parsed_det_date = OCRService.parse_date_string(det_expiry)
     expiry_tampered = False
-    if parsed_det_date:
-        if (parsed_det_date.month != batch.expiry_date.month) or (parsed_det_date.year != batch.expiry_date.year):
+    ref_exp_date = unit.expiry_date if unit else batch.expiry_date
+    if parsed_det_date and ref_exp_date:
+        if (parsed_det_date.month != ref_exp_date.month) or (parsed_det_date.year != ref_exp_date.year):
             expiry_tampered = True
     elif "tamper" in img_name_lower or "2028" in det_expiry:
         expiry_tampered = True
@@ -426,7 +632,7 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
     if expiry_tampered:
         incident = AlertService.create_fraud_incident(
             db=db,
-            batch_id=batch.id,
+            batch_id=batch.id if batch else (unit.batch_id if unit else "demo"),
             incident_type="LABEL_TAMPERING",
             risk_score=85,
             severity="CRITICAL",
@@ -435,43 +641,69 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
                 f"contradicts registered manufacturer expiry '{reg_expiry}'. Fraudulent shelf-life extension."
             ),
             evidence={
-                "product_id": reg_product_id,
-                "batch_number": batch.batch_number,
+                "serial_code": reg_serial,
+                "batch_number": reg_batch,
                 "registered_expiry": reg_expiry,
                 "printed_ocr_expiry": det_expiry,
                 "location": request.location
             }
         )
 
-        batch.status = BatchStatus.SUSPICIOUS
-        batch.updated_at = now
+        if unit:
+            unit.product_status = "SUSPICIOUS"
+        if batch:
+            batch.status = BatchStatus.SUSPICIOUS
+            batch.updated_at = now
         db.commit()
 
-        LedgerService.record_event(
+        AlertService.create_alert(
             db=db,
-            batch_id=batch.id,
-            event_type="LABEL_TAMPERING_FLAGGED",
-            actor_name=f"Scanner ({request.scanner_role})",
-            location=request.location,
-            metadata={
-                "incident_id": incident.id,
-                "printed_expiry": det_expiry,
-                "registered_expiry": reg_expiry
-            }
+            recipient_role="RETAILER",
+            message=f"Package information mismatch on {reg_medicine} ({reg_serial}): Registered EXP {reg_expiry}, detected EXP {det_expiry}.",
+            severity="HIGH",
+            incident_id=incident.id,
+            batch_id=batch.id if batch else None,
+            product_id=unit.id if unit else None,
+            serial_code=reg_serial,
+            batch_number=reg_batch,
+            medicine_name=reg_medicine,
+            alert_type="OCR_MISMATCH",
+            recipient_name=request.location,
+            action_url=f"/retailer/medicines/{reg_serial}"
+        )
+        AlertService.create_alert(
+            db=db,
+            recipient_role="MANUFACTURER",
+            message=f"Package label mismatch detected at {request.location} for serial {reg_serial}. Registered {reg_expiry} vs Printed {det_expiry}.",
+            severity="HIGH",
+            incident_id=incident.id,
+            batch_id=batch.id if batch else None,
+            product_id=unit.id if unit else None,
+            serial_code=reg_serial,
+            batch_number=reg_batch,
+            medicine_name=reg_medicine,
+            alert_type="OCR_MISMATCH",
+            recipient_name=reg_mfr,
+            action_url=f"/manufacturer/products/{reg_serial}"
         )
 
-        return RetailerVerifyResponse(
+        resp = RetailerVerifyResponse(
             status_verdict="LABEL_TAMPERING",
             title="🔴 LABEL INCONSISTENCY DETECTED",
             product_id=reg_product_id,
+            serial_code=reg_serial,
             medicine_name=reg_medicine,
+            dosage_strength=reg_dosage,
             batch_number=reg_batch,
             registered_expiry=reg_expiry,
             detected_expiry=det_expiry,
             manufacturer=reg_mfr,
+            distributor=reg_distributor,
             assigned_retailer=reg_retailer,
-            lifecycle_status=batch.status,
-            message="Printed package information does not match the registered product record.",
+            scanning_retailer=request.location,
+            lifecycle_status="SUSPICIOUS",
+            expiry_status="TAMPERED",
+            message="Printed package information does not match the registered product record. Packaging label mismatch detected.",
             risk_score=85,
             severity="CRITICAL",
             checks={
@@ -481,48 +713,63 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
                 "lifecycle_valid": False
             },
             comparison=[
-                {"field": "Product ID", "detected": reg_product_id, "registered": reg_product_id, "match": True},
+                {"field": "Serial Code", "detected": reg_serial, "registered": reg_serial, "match": True},
                 {"field": "Medicine", "detected": det_medicine, "registered": reg_medicine, "match": True},
                 {"field": "Batch Number", "detected": det_batch, "registered": reg_batch, "match": True},
                 {"field": "Expiry Date", "detected": det_expiry, "registered": reg_expiry, "match": False},
                 {"field": "Manufacturer", "detected": det_mfr, "registered": reg_mfr, "match": True}
             ],
             incident_id=incident.id,
-            recommendation="DO NOT ACCEPT OR DISPENSE: Packaging label has been fraudulently altered. Immediate regulatory alert issued."
+            recommendation="DO NOT SELL: Product information mismatch detected. Quarantine package and alert manufacturer.",
+            allow_sale=False
         )
+        return finish_and_record(resp, "LABEL_TAMPERING", batch.id if batch else None, unit.id if unit else None, reg_serial)
 
-    # Step 6: Check Expiry (Case D)
-    is_expired = (
-        batch.status in [BatchStatus.EXPIRED, BatchStatus.RETURN_OVERDUE]
-        or (batch.expiry_date < datetime(2026, 8, 15))
-        or (batch.status not in [BatchStatus.ACTIVE, BatchStatus.ASSIGNED_TO_RETAILER] and batch.expiry_date <= now)
-    )
+    # Step 7: Check Expiry (Section AB)
+    exp_date = unit.expiry_date if unit else batch.expiry_date
+    is_expired = False
+    if unit and (unit.expiry_status == "EXPIRED" or (unit.expiry_date and unit.expiry_date <= now)):
+        is_expired = True
+    elif batch and (batch.status in [BatchStatus.EXPIRED, BatchStatus.RETURN_OVERDUE] or (batch.expiry_date and batch.expiry_date <= now)):
+        is_expired = True
+
     if is_expired:
-        if batch.status in [BatchStatus.ACTIVE, BatchStatus.ASSIGNED_TO_RETAILER]:
+        if unit:
+            unit.expiry_status = "EXPIRED"
+            unit.product_status = "EXPIRED"
+        if batch and batch.status in [BatchStatus.ACTIVE, BatchStatus.ASSIGNED_TO_RETAILER, BatchStatus.EXPIRING_SOON]:
             batch.status = BatchStatus.EXPIRED
             batch.updated_at = now
-            db.commit()
+        db.commit()
 
-            LedgerService.record_event(
-                db=db,
-                batch_id=batch.id,
-                event_type="PRODUCT_EXPIRED",
-                actor_name="Compliance Engine",
-                location=request.location,
-                metadata={"reason": "Product reached registered expiry date"}
-            )
-
-        return RetailerVerifyResponse(
-            status_verdict="EXPIRED",
-            title="🟠 PRODUCT EXPIRED",
-            product_id=reg_product_id,
+        # Dual alerts for retailer and manufacturer
+        AlertService.create_expiry_alerts(
+            db=db,
+            serial_code=reg_serial,
             medicine_name=reg_medicine,
+            batch_number=reg_batch,
+            expiry_date=exp_date or now,
+            retailer_name=reg_retailer,
+            manufacturer_name=reg_mfr,
+            is_expired=True
+        )
+
+        resp = RetailerVerifyResponse(
+            status_verdict="EXPIRED",
+            title="🔴 PRODUCT EXPIRED",
+            product_id=reg_product_id,
+            serial_code=reg_serial,
+            medicine_name=reg_medicine,
+            dosage_strength=reg_dosage,
             batch_number=reg_batch,
             registered_expiry=reg_expiry,
             detected_expiry=det_expiry,
             manufacturer=reg_mfr,
+            distributor=reg_distributor,
             assigned_retailer=reg_retailer,
+            scanning_retailer=request.location,
             lifecycle_status="EXPIRED",
+            expiry_status="EXPIRED",
             message="DO NOT SELL / RETURN REQUIRED. This medicine has passed its registered shelf-life.",
             risk_score=70,
             severity="HIGH",
@@ -534,43 +781,58 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
                 "is_expired": True
             },
             comparison=[
-                {"field": "Product ID", "detected": reg_product_id, "registered": reg_product_id, "match": True},
+                {"field": "Serial Code", "detected": reg_serial, "registered": reg_serial, "match": True},
                 {"field": "Medicine", "detected": det_medicine, "registered": reg_medicine, "match": True},
                 {"field": "Batch Number", "detected": det_batch, "registered": reg_batch, "match": True},
                 {"field": "Expiry Date", "detected": det_expiry, "registered": reg_expiry, "match": True},
                 {"field": "Lifecycle Status", "detected": "Physical Package", "registered": "EXPIRED", "match": False}
             ],
-            recommendation="DO NOT SELL / RETURN REQUIRED: Expired pharmaceutical product must be returned via reverse chain."
+            recommendation="DO NOT SELL / RETURN REQUIRED: Expired pharmaceutical product must be returned via reverse chain.",
+            allow_sale=False
         )
+        return finish_and_record(resp, "EXPIRED", batch.id if batch else None, unit.id if unit else None, reg_serial)
 
-    # Step 7: Clean Valid Match (Case A)
-    return RetailerVerifyResponse(
+    # Step 8: Clean Valid Match (Section AA)
+    if unit:
+        unit.last_verified_at = now
+        db.commit()
+
+    resp = RetailerVerifyResponse(
         status_verdict="VERIFIED",
         title="🟢 PRODUCT VERIFIED",
         product_id=reg_product_id,
+        serial_code=reg_serial,
         medicine_name=reg_medicine,
+        dosage_strength=reg_dosage,
         batch_number=reg_batch,
         registered_expiry=reg_expiry,
         detected_expiry=det_expiry,
         manufacturer=reg_mfr,
+        distributor=reg_distributor,
         assigned_retailer=reg_retailer,
-        lifecycle_status=batch.status,
-        message="Package information matches the registered product record.",
+        scanning_retailer=request.location,
+        lifecycle_status=reg_status,
+        expiry_status="VALID",
+        message="Package information matches the registered product record and the product is within its valid expiry period.",
         risk_score=5,
         severity="LOW",
         checks={
             "qr_detected": True,
             "db_lookup": True,
             "ocr_match": True,
+            "location_match": True,
             "lifecycle_valid": True
         },
         comparison=[
-            {"field": "Product ID", "detected": reg_product_id, "registered": reg_product_id, "match": True},
+            {"field": "Serial Code", "detected": reg_serial, "registered": reg_serial, "match": True},
             {"field": "Medicine", "detected": det_medicine, "registered": reg_medicine, "match": True},
+            {"field": "Dosage Strength", "detected": reg_dosage, "registered": reg_dosage, "match": True},
             {"field": "Batch Number", "detected": det_batch, "registered": reg_batch, "match": True},
             {"field": "Expiry Date", "detected": det_expiry, "registered": reg_expiry, "match": True},
             {"field": "Manufacturer", "detected": det_mfr, "registered": reg_mfr, "match": True},
-            {"field": "Status", "detected": "Valid Shelf Life", "registered": batch.status, "match": True}
+            {"field": "Current Retailer", "detected": request.location, "registered": reg_retailer, "match": True}
         ],
-        recommendation="Package information matches the registered product record. Product is compliant for retail dispensing."
+        recommendation="Package information matches the registered manufacturer record and the product is within its valid expiry period.",
+        allow_sale=True
     )
+    return finish_and_record(resp, "VERIFIED", batch.id if batch else None, unit.id if unit else None, reg_serial)

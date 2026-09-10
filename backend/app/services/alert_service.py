@@ -74,6 +74,177 @@ class AlertService:
         return incident
 
     @staticmethod
+    def create_alert(
+        db: Session,
+        recipient_role: str,
+        message: str,
+        severity: str = "HIGH",
+        incident_id: Optional[str] = None,
+        product_id: Optional[str] = None,
+        serial_code: Optional[str] = None,
+        batch_id: Optional[str] = None,
+        batch_number: Optional[str] = None,
+        medicine_name: Optional[str] = None,
+        alert_type: Optional[str] = None,
+        recipient_name: Optional[str] = None,
+        action_url: Optional[str] = None
+    ) -> Alert:
+        alert = Alert(
+            incident_id=incident_id,
+            product_id=product_id or serial_code,
+            serial_code=serial_code,
+            batch_number=batch_number,
+            medicine_name=medicine_name,
+            alert_type=alert_type,
+            action_url=action_url,
+            recipient_role=recipient_role,
+            recipient_name=recipient_name,
+            severity=severity,
+            message=message,
+            read=False,
+            created_at=datetime.utcnow()
+        )
+        db.add(alert)
+        db.commit()
+        db.refresh(alert)
+        return alert
+
+    @staticmethod
+    def create_expiry_alerts(
+        db: Session,
+        serial_code: str,
+        medicine_name: str,
+        batch_number: str,
+        expiry_date: datetime,
+        is_already_expired: bool = True,
+        retailer_name: str = "Pharmacy A",
+        distributor_name: Optional[str] = None,
+        manufacturer_name: Optional[str] = None,
+        is_expired: Optional[bool] = None
+    ) -> List[Alert]:
+        now = datetime.utcnow()
+        exp_str = expiry_date.strftime("%d/%m/%Y")
+        alerts = []
+        expired_flag = is_expired if is_expired is not None else is_already_expired
+
+        if expired_flag:
+            # 1. Retailer Alert
+            r_alert = Alert(
+                product_id=serial_code,
+                serial_code=serial_code,
+                batch_number=batch_number,
+                medicine_name=medicine_name,
+                alert_type="EXPIRED",
+                action_url=f"/retailer/medicines/{serial_code}",
+                recipient_role="RETAILER",
+                recipient_name=retailer_name,
+                severity="HIGH",
+                message=f"🔴 MEDICINE EXPIRED: {medicine_name} (Serial: {serial_code}, Batch: {batch_number}) has passed shelf-life ({exp_str}). DO NOT SELL / RETURN REQUIRED.",
+                read=False,
+                created_at=now
+            )
+            # 2. Manufacturer Alert
+            m_alert = Alert(
+                product_id=serial_code,
+                serial_code=serial_code,
+                batch_number=batch_number,
+                medicine_name=medicine_name,
+                alert_type="EXPIRED",
+                action_url=f"/manufacturer/products/{serial_code}",
+                recipient_role="MANUFACTURER",
+                severity="HIGH",
+                message=f"🔴 PRODUCT EXPIRED AT RETAILER: {medicine_name} (Serial: {serial_code}) reached expiry at {retailer_name}. Reverse return expected.",
+                read=False,
+                created_at=now
+            )
+            alerts.extend([r_alert, m_alert])
+        else:
+            # Expiring soon
+            r_alert = Alert(
+                product_id=serial_code,
+                serial_code=serial_code,
+                batch_number=batch_number,
+                medicine_name=medicine_name,
+                alert_type="EXPIRING_SOON",
+                action_url=f"/retailer/medicines/{serial_code}",
+                recipient_role="RETAILER",
+                recipient_name=retailer_name,
+                severity="MEDIUM",
+                message=f"🟠 MEDICINE EXPIRING SOON: {medicine_name} (Serial: {serial_code}) expires on {exp_str}. Plan reverse return before expiry.",
+                read=False,
+                created_at=now
+            )
+            m_alert = Alert(
+                product_id=serial_code,
+                serial_code=serial_code,
+                batch_number=batch_number,
+                medicine_name=medicine_name,
+                alert_type="EXPIRING_SOON",
+                action_url=f"/manufacturer/products/{serial_code}",
+                recipient_role="MANUFACTURER",
+                severity="MEDIUM",
+                message=f"🟠 PRODUCT EXPIRY ALERT: {medicine_name} (Serial: {serial_code}) at {retailer_name} expires on {exp_str}. Stock approaching shelf-life.",
+                read=False,
+                created_at=now
+            )
+            alerts.extend([r_alert, m_alert])
+
+        db.add_all(alerts)
+        db.commit()
+        return alerts
+
+    @staticmethod
+    def create_location_mismatch_alerts(
+        db: Session,
+        serial_code: str,
+        medicine_name: str,
+        batch_number: str,
+        registered_retailer: str,
+        scanning_retailer: str
+    ) -> List[Alert]:
+        now = datetime.utcnow()
+        r_alert = Alert(
+            product_id=serial_code,
+            serial_code=serial_code,
+            batch_number=batch_number,
+            medicine_name=medicine_name,
+            alert_type="LOCATION_MISMATCH",
+            recipient_role="RETAILER",
+            recipient_name=scanning_retailer,
+            severity="HIGH",
+            message=f"🚨 DISTRIBUTION MISMATCH: Package {serial_code} was allocated to '{registered_retailer}' but scanned at '{scanning_retailer}'. DO NOT DISPENSE UNTIL INVESTIGATED.",
+            read=False,
+            created_at=now
+        )
+        m_alert = Alert(
+            product_id=serial_code,
+            serial_code=serial_code,
+            batch_number=batch_number,
+            medicine_name=medicine_name,
+            alert_type="LOCATION_MISMATCH",
+            recipient_role="MANUFACTURER",
+            severity="HIGH",
+            message=f"🚨 UNAUTHORIZED RETAIL LOCATION: Serial {serial_code} allocated to '{registered_retailer}' was scanned at '{scanning_retailer}'. Potential diversion anomaly.",
+            read=False,
+            created_at=now
+        )
+        reg_alert = Alert(
+            product_id=serial_code,
+            serial_code=serial_code,
+            batch_number=batch_number,
+            medicine_name=medicine_name,
+            alert_type="LOCATION_MISMATCH",
+            recipient_role="REGULATOR",
+            severity="HIGH",
+            message=f"SUPPLY CHAIN DIVERSION: Package {serial_code} scanned at unauthorized retail counter '{scanning_retailer}' (registered holder: {registered_retailer}).",
+            read=False,
+            created_at=now
+        )
+        db.add_all([r_alert, m_alert, reg_alert])
+        db.commit()
+        return [r_alert, m_alert, reg_alert]
+
+    @staticmethod
     def get_alerts(db: Session, role: Optional[str] = None, unread_only: bool = False):
         query = db.query(Alert)
         if role:

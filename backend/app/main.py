@@ -9,7 +9,7 @@ from app.models.models import User
 from app.seed_data import seed_database
 
 # Routers
-from app.api import auth, batches, returns, pickups, destruction, scans, fraud, alerts, dashboard, demo, products
+from app.api import auth, batches, returns, pickups, destruction, scans, fraud, alerts, dashboard, demo, products, serials, roles
 from sqlalchemy import text
 
 app = FastAPI(
@@ -41,6 +41,8 @@ app.add_middleware(
 app.include_router(auth.router, prefix=settings.API_PREFIX)
 app.include_router(batches.router, prefix=settings.API_PREFIX)
 app.include_router(products.router, prefix=settings.API_PREFIX)
+app.include_router(serials.router, prefix=settings.API_PREFIX)
+app.include_router(roles.router, prefix=settings.API_PREFIX)
 app.include_router(returns.router, prefix=settings.API_PREFIX)
 app.include_router(pickups.router, prefix=settings.API_PREFIX)
 app.include_router(destruction.router, prefix=settings.API_PREFIX)
@@ -56,6 +58,7 @@ def on_startup():
     # Safe SQLite column migration for batches table
     try:
         with engine.connect() as conn:
+            # batches migrations
             res = conn.execute(text("PRAGMA table_info(batches)")).fetchall()
             cols = [r[1] for r in res]
             if "product_id" not in cols:
@@ -68,6 +71,43 @@ def on_startup():
                 conn.execute(text("ALTER TABLE batches ADD COLUMN dosage_strength VARCHAR(100)"))
             if "manufacturer_name" not in cols:
                 conn.execute(text("ALTER TABLE batches ADD COLUMN manufacturer_name VARCHAR(255)"))
+
+            # alerts migrations
+            res_a = conn.execute(text("PRAGMA table_info(alerts)")).fetchall()
+            cols_a = [r[1] for r in res_a]
+            if "product_id" not in cols_a:
+                conn.execute(text("ALTER TABLE alerts ADD COLUMN product_id VARCHAR(100)"))
+            if "serial_code" not in cols_a:
+                conn.execute(text("ALTER TABLE alerts ADD COLUMN serial_code VARCHAR(100)"))
+            if "batch_number" not in cols_a:
+                conn.execute(text("ALTER TABLE alerts ADD COLUMN batch_number VARCHAR(100)"))
+            if "medicine_name" not in cols_a:
+                conn.execute(text("ALTER TABLE alerts ADD COLUMN medicine_name VARCHAR(255)"))
+            if "alert_type" not in cols_a:
+                conn.execute(text("ALTER TABLE alerts ADD COLUMN alert_type VARCHAR(100)"))
+            if "action_url" not in cols_a:
+                conn.execute(text("ALTER TABLE alerts ADD COLUMN action_url VARCHAR(255)"))
+            if "recipient_name" not in cols_a:
+                conn.execute(text("ALTER TABLE alerts ADD COLUMN recipient_name VARCHAR(255)"))
+
+            # scans migrations
+            res_s = conn.execute(text("PRAGMA table_info(scans)")).fetchall()
+            cols_s = [r[1] for r in res_s]
+            if "product_unit_id" not in cols_s:
+                conn.execute(text("ALTER TABLE scans ADD COLUMN product_unit_id VARCHAR(100)"))
+            if "serial_code" not in cols_s:
+                conn.execute(text("ALTER TABLE scans ADD COLUMN serial_code VARCHAR(100)"))
+            if "retailer_id" not in cols_s:
+                conn.execute(text("ALTER TABLE scans ADD COLUMN retailer_id VARCHAR(100)"))
+            if "retailer_name" not in cols_s:
+                conn.execute(text("ALTER TABLE scans ADD COLUMN retailer_name VARCHAR(255)"))
+            if "database_result" not in cols_s:
+                conn.execute(text("ALTER TABLE scans ADD COLUMN database_result VARCHAR(100)"))
+            if "expiry_result" not in cols_s:
+                conn.execute(text("ALTER TABLE scans ADD COLUMN expiry_result VARCHAR(100)"))
+            if "verdict" not in cols_s:
+                conn.execute(text("ALTER TABLE scans ADD COLUMN verdict VARCHAR(100)"))
+
             conn.commit()
     except Exception as e:
         print(f"Column migration check note: {e}")

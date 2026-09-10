@@ -1,16 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Alert } from '../types';
 import {
   ShieldAlert, ScanLine, LayoutDashboard, Store, Truck,
-  Factory, Scale, Bell, Check, UserCheck, ChevronDown, RotateCcw, QrCode
+  Factory, Scale, Bell, Check, ChevronDown, RotateCcw, QrCode,
+  List, Flame, Package, CheckCircle2, Clock, Plus, LogOut, Users
 } from 'lucide-react';
 
+interface NavLinkItem {
+  path: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  highlight?: boolean;
+  critical?: boolean;
+}
+
 export const Navbar: React.FC = () => {
-  const { currentUser, currentRole, allUsers, switchUser } = useAuth();
+  const { currentUser, currentRole, allUsers, switchUser, logout, isAuthenticated } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
@@ -28,10 +38,12 @@ export const Navbar: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchAlerts();
-    const interval = setInterval(fetchAlerts, 10000);
-    return () => clearInterval(interval);
-  }, [currentRole]);
+    if (isAuthenticated) {
+      fetchAlerts();
+      const interval = setInterval(fetchAlerts, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [currentRole, isAuthenticated]);
 
   const handleMarkRead = async (id: string) => {
     try {
@@ -42,15 +54,53 @@ export const Navbar: React.FC = () => {
     }
   };
 
-  const navLinks = [
-    { path: '/dashboard', label: 'Command Center', icon: LayoutDashboard },
-    { path: '/verify', label: 'Verify Medicine', icon: ScanLine, highlight: true },
-    { path: '/manufacturer/register', label: 'Register Medicine', icon: QrCode },
-    { path: '/retailer', label: 'Pharmacy', icon: Store },
-    { path: '/distributor', label: 'Distributor', icon: Truck },
-    { path: '/manufacturer', label: 'Manufacturer', icon: Factory },
-    { path: '/regulator', label: 'Regulator Hub', icon: Scale, critical: true },
-  ];
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const getNavLinks = (): NavLinkItem[] => {
+    switch (currentRole) {
+      case 'MANUFACTURER':
+        return [
+          { path: '/manufacturer/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { path: '/manufacturer/medicines', label: 'Medicines', icon: List },
+          { path: '/manufacturer/register', label: 'Register Medicine', icon: Plus },
+          { path: '/manufacturer/distributors', label: 'Distributors', icon: Truck },
+          { path: '/manufacturer/retailers', label: 'Retailers', icon: Store },
+          { path: '/manufacturer/alerts', label: 'Alerts', icon: Bell },
+          { path: '/manufacturer', label: 'Destruction & Returns', icon: Flame },
+          { path: '/regulator', label: 'Fraud Alerts', icon: ShieldAlert, critical: true },
+        ];
+      case 'DISTRIBUTOR':
+        return [
+          { path: '/distributor/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { path: '/distributor/medicines', label: 'Received Medicines', icon: Package },
+          { path: '/distributor/retailers', label: 'Retailer Distribution', icon: Store },
+          { path: '/distributor/pickups', label: 'Return Pickups', icon: RotateCcw },
+          { path: '/distributor', label: 'Transport History', icon: Truck },
+        ];
+      case 'RETAILER':
+        return [
+          { path: '/retailer/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+          { path: '/retailer/medicines', label: 'My Medicines', icon: Package },
+          { path: '/retailer/verify', label: 'Verify Medicine', icon: ScanLine, highlight: true },
+          { path: '/retailer/alerts', label: 'Dispensary Alerts', icon: Bell },
+          { path: '/retailer', label: 'Expiry & Returns', icon: Store },
+          { path: '/scan', label: 'Scan History', icon: Clock },
+        ];
+      case 'REGULATOR':
+      default:
+        return [
+          { path: '/regulator', label: 'Regulator Hub', icon: Scale, critical: true },
+          { path: '/dashboard', label: 'Command Center', icon: LayoutDashboard },
+          { path: '/verify', label: 'Verify Medicine', icon: ScanLine },
+          { path: '/scan', label: 'Scan Ledger', icon: Clock },
+        ];
+    }
+  };
+
+  const navLinks = getNavLinks();
 
   return (
     <nav className="sticky top-0 z-40 bg-slate-950/85 backdrop-blur-md border-b border-slate-800">
@@ -216,6 +266,10 @@ export const Navbar: React.FC = () => {
                         onClick={() => {
                           switchUser(u);
                           setShowRoleDropdown(false);
+                          if (u.role === 'MANUFACTURER') navigate('/manufacturer/dashboard');
+                          else if (u.role === 'RETAILER') navigate('/retailer/dashboard');
+                          else if (u.role === 'DISTRIBUTOR') navigate('/distributor/dashboard');
+                          else if (u.role === 'REGULATOR') navigate('/regulator');
                         }}
                         className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition ${
                           currentUser?.id === u.id
@@ -236,6 +290,24 @@ export const Navbar: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Logout / Login Action */}
+            {isAuthenticated ? (
+              <button
+                onClick={handleLogout}
+                title="Log out and return to sign in"
+                className="p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-rose-500/50 text-slate-400 hover:text-rose-400 transition"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            ) : (
+              <Link
+                to="/login"
+                className="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition hover:bg-emerald-500/30"
+              >
+                Login
+              </Link>
+            )}
           </div>
         </div>
       </div>
