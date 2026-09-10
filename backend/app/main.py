@@ -9,7 +9,8 @@ from app.models.models import User
 from app.seed_data import seed_database
 
 # Routers
-from app.api import auth, batches, returns, pickups, destruction, scans, fraud, alerts, dashboard, demo
+from app.api import auth, batches, returns, pickups, destruction, scans, fraud, alerts, dashboard, demo, products
+from sqlalchemy import text
 
 app = FastAPI(
     title="PharmaGuard — Reverse Chain Compliance Engine",
@@ -39,6 +40,7 @@ app.add_middleware(
 # Include Routers
 app.include_router(auth.router, prefix=settings.API_PREFIX)
 app.include_router(batches.router, prefix=settings.API_PREFIX)
+app.include_router(products.router, prefix=settings.API_PREFIX)
 app.include_router(returns.router, prefix=settings.API_PREFIX)
 app.include_router(pickups.router, prefix=settings.API_PREFIX)
 app.include_router(destruction.router, prefix=settings.API_PREFIX)
@@ -51,6 +53,25 @@ app.include_router(demo.router, prefix=settings.API_PREFIX)
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    # Safe SQLite column migration for batches table
+    try:
+        with engine.connect() as conn:
+            res = conn.execute(text("PRAGMA table_info(batches)")).fetchall()
+            cols = [r[1] for r in res]
+            if "product_id" not in cols:
+                conn.execute(text("ALTER TABLE batches ADD COLUMN product_id VARCHAR(100)"))
+            if "qr_payload" not in cols:
+                conn.execute(text("ALTER TABLE batches ADD COLUMN qr_payload VARCHAR(255)"))
+            if "assigned_retailer_name" not in cols:
+                conn.execute(text("ALTER TABLE batches ADD COLUMN assigned_retailer_name VARCHAR(255)"))
+            if "dosage_strength" not in cols:
+                conn.execute(text("ALTER TABLE batches ADD COLUMN dosage_strength VARCHAR(100)"))
+            if "manufacturer_name" not in cols:
+                conn.execute(text("ALTER TABLE batches ADD COLUMN manufacturer_name VARCHAR(255)"))
+            conn.commit()
+    except Exception as e:
+        print(f"Column migration check note: {e}")
+
     db = SessionLocal()
     try:
         user_count = db.query(User).count()

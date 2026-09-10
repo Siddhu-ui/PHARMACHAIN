@@ -24,9 +24,11 @@ export interface Medicine {
 
 export type BatchStatus =
   | 'REGISTERED'
+  | 'ASSIGNED_TO_RETAILER'
   | 'ACTIVE'
   | 'EXPIRING_SOON'
   | 'EXPIRED'
+  | 'RETURN_OVERDUE'
   | 'RETURN_REQUESTED'
   | 'PICKUP_CONFIRMED'
   | 'IN_TRANSIT'
@@ -49,6 +51,11 @@ export interface Batch {
   status: BatchStatus;
   original_retailer_id?: string;
   current_location: string;
+  product_id?: string;
+  qr_payload?: string;
+  assigned_retailer_name?: string;
+  dosage_strength?: string;
+  manufacturer_name?: string;
   created_at: string;
   updated_at?: string;
   medicine?: Medicine;
@@ -199,4 +206,70 @@ export interface DashboardStats {
   fraud_by_type: { type: string; count: number }[];
   risk_distribution: { severity: string; count: number }[];
   recent_events: BatchEvent[];
+}
+
+export interface Product {
+  id: string;
+  product_id: string;
+  medicine: string;
+  dosage?: string;
+  batch_id: string;
+  manufacturer: string;
+  assigned_retailer?: string;
+  manufacturing_date: string;
+  expiry_date: string;
+  quantity: number;
+  status: string;
+  qr_payload: string;
+  created_at: string;
+}
+
+export interface ProductRegisterRequest {
+  medicine_name: string;
+  strength?: string;
+  batch_id: string;
+  manufacturing_date: string;
+  expiry_date: string;
+  manufacturer: string;
+  assigned_retailer?: string;
+  quantity?: number;
+  product_id?: string;
+}
+
+export interface RetailerVerifyRequest {
+  product_id?: string;
+  qr_detected: boolean;
+  package_image_url?: string;
+  printed_expiry_override?: string;
+  medicine_name_ocr?: string;
+  batch_ocr?: string;
+  expiry_ocr?: string;
+  manufacturer_ocr?: string;
+  location?: string;
+  scanner_role?: string;
+}
+
+export interface RetailerVerifyResponse {
+  status_verdict: 'VERIFIED' | 'LABEL_TAMPERING' | 'UNKNOWN_PRODUCT' | 'EXPIRED' | 'REENTRY_FRAUD' | 'QR_NOT_DETECTED';
+  title: string;
+  product_id?: string;
+  medicine_name?: string;
+  batch_number?: string;
+  registered_expiry?: string;
+  detected_expiry?: string;
+  manufacturer?: string;
+  assigned_retailer?: string;
+  lifecycle_status?: string;
+  message: string;
+  risk_score: number;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  checks: Record<string, any>;
+  comparison: Array<{
+    field: string;
+    detected: string;
+    registered: string;
+    match: boolean;
+  }>;
+  incident_id?: string;
+  recommendation: string;
 }

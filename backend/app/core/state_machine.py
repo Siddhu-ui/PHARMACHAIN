@@ -2,9 +2,11 @@ from typing import Tuple, List
 
 class BatchStatus:
     REGISTERED = "REGISTERED"
+    ASSIGNED_TO_RETAILER = "ASSIGNED_TO_RETAILER"
     ACTIVE = "ACTIVE"
     EXPIRING_SOON = "EXPIRING_SOON"
     EXPIRED = "EXPIRED"
+    RETURN_OVERDUE = "RETURN_OVERDUE"
     RETURN_REQUESTED = "RETURN_REQUESTED"
     PICKUP_CONFIRMED = "PICKUP_CONFIRMED"
     IN_TRANSIT = "IN_TRANSIT"
@@ -17,10 +19,12 @@ class BatchStatus:
 
 # Legal forward transitions in standard reverse logistics flow
 VALID_TRANSITIONS = {
-    BatchStatus.REGISTERED: [BatchStatus.ACTIVE, BatchStatus.EXPIRING_SOON, BatchStatus.EXPIRED, BatchStatus.SUSPICIOUS],
-    BatchStatus.ACTIVE: [BatchStatus.EXPIRING_SOON, BatchStatus.EXPIRED, BatchStatus.SUSPICIOUS],
-    BatchStatus.EXPIRING_SOON: [BatchStatus.EXPIRED, BatchStatus.RETURN_REQUESTED, BatchStatus.SUSPICIOUS],
-    BatchStatus.EXPIRED: [BatchStatus.RETURN_REQUESTED, BatchStatus.SUSPICIOUS],
+    BatchStatus.REGISTERED: [BatchStatus.ASSIGNED_TO_RETAILER, BatchStatus.ACTIVE, BatchStatus.EXPIRING_SOON, BatchStatus.EXPIRED, BatchStatus.SUSPICIOUS],
+    BatchStatus.ASSIGNED_TO_RETAILER: [BatchStatus.ACTIVE, BatchStatus.EXPIRING_SOON, BatchStatus.EXPIRED, BatchStatus.SUSPICIOUS],
+    BatchStatus.ACTIVE: [BatchStatus.EXPIRING_SOON, BatchStatus.EXPIRED, BatchStatus.RETURN_OVERDUE, BatchStatus.SUSPICIOUS],
+    BatchStatus.EXPIRING_SOON: [BatchStatus.EXPIRED, BatchStatus.RETURN_REQUESTED, BatchStatus.RETURN_OVERDUE, BatchStatus.SUSPICIOUS],
+    BatchStatus.EXPIRED: [BatchStatus.RETURN_REQUESTED, BatchStatus.RETURN_OVERDUE, BatchStatus.SUSPICIOUS],
+    BatchStatus.RETURN_OVERDUE: [BatchStatus.RETURN_REQUESTED, BatchStatus.SUSPICIOUS],
     BatchStatus.RETURN_REQUESTED: [BatchStatus.PICKUP_CONFIRMED, BatchStatus.SUSPICIOUS],
     BatchStatus.PICKUP_CONFIRMED: [BatchStatus.IN_TRANSIT, BatchStatus.RECEIVED_BY_MANUFACTURER, BatchStatus.SUSPICIOUS],
     BatchStatus.IN_TRANSIT: [BatchStatus.RECEIVED_BY_MANUFACTURER, BatchStatus.SUSPICIOUS],
@@ -57,4 +61,4 @@ class BatchStateMachine:
 
     @staticmethod
     def is_return_eligible(status: str) -> bool:
-        return status in [BatchStatus.EXPIRED, BatchStatus.EXPIRING_SOON, BatchStatus.ACTIVE]
+        return status in [BatchStatus.EXPIRED, BatchStatus.EXPIRING_SOON, BatchStatus.ACTIVE, BatchStatus.RETURN_OVERDUE]

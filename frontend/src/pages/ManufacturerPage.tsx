@@ -133,13 +133,21 @@ export const ManufacturerPage: React.FC = () => {
           </p>
         </div>
 
-        <Link
-          to="/scan"
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition self-start sm:self-auto shadow-lg shadow-indigo-500/20"
-        >
-          <span>Verify Incoming Batch</span>
-          <ArrowRight className="w-4 h-4" />
-        </Link>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Link
+            to="/manufacturer/register"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20"
+          >
+            <span>Register Medicine</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+          <Link
+            to="/manufacturer/products"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-bold text-xs transition"
+          >
+            <span>Registered Products</span>
+          </Link>
+        </div>
       </div>
 
       {statusMsg && (

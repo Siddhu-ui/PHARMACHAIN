@@ -9,6 +9,9 @@ import { DistributorPage } from './pages/DistributorPage';
 import { ManufacturerPage } from './pages/ManufacturerPage';
 import { RegulatorPage } from './pages/RegulatorPage';
 import { ScanPage } from './pages/ScanPage';
+import { RegisterProductPage } from './pages/RegisterProductPage';
+import { RegisteredProductsPage } from './pages/RegisteredProductsPage';
+import { VerifyMedicinePage } from './pages/VerifyMedicinePage';
 import { BatchDetailPage } from './pages/BatchDetailPage';
 
 export const App: React.FC = () => {
@@ -21,12 +24,15 @@ export const App: React.FC = () => {
             <Routes>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/retailer/verify" element={<VerifyMedicinePage />} />
               <Route path="/retailer/*" element={<RetailerPage />} />
               <Route path="/distributor/*" element={<DistributorPage />} />
+              <Route path="/manufacturer/register" element={<RegisterProductPage />} />
+              <Route path="/manufacturer/products" element={<RegisteredProductsPage />} />
               <Route path="/manufacturer/*" element={<ManufacturerPage />} />
               <Route path="/regulator/*" element={<RegulatorPage />} />
+              <Route path="/verify" element={<VerifyMedicinePage />} />
               <Route path="/scan" element={<ScanPage />} />
-              <Route path="/verify" element={<ScanPage />} />
               <Route path="/batches/:id" element={<BatchDetailPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

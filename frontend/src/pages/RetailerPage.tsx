@@ -100,10 +100,10 @@ export const RetailerPage: React.FC = () => {
         </div>
 
         <Link
-          to="/scan"
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition self-start sm:self-auto"
+          to="/retailer/verify"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition self-start sm:self-auto shadow-lg shadow-emerald-600/20"
         >
-          <span>Verify Medicine Package</span>
+          <span>Verify Medicine Before Sale</span>
           <ArrowRight className="w-4 h-4" />
         </Link>
       </div>

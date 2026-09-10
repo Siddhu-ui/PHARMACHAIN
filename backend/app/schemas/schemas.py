@@ -87,6 +87,11 @@ class BatchResponse(BaseModel):
     status: str
     original_retailer_id: Optional[str] = None
     current_location: str
+    product_id: Optional[str] = None
+    qr_payload: Optional[str] = None
+    assigned_retailer_name: Optional[str] = None
+    dosage_strength: Optional[str] = None
+    manufacturer_name: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     medicine: Optional[MedicineResponse] = None
@@ -276,3 +281,68 @@ class DashboardStatsResponse(BaseModel):
     fraud_by_type: List[Dict[str, Any]]
     risk_distribution: List[Dict[str, Any]]
     recent_events: List[BatchEventResponse]
+
+# --- Product Registration & Retailer Package Verification ---
+class ProductRegisterRequest(BaseModel):
+    medicine_name: str
+    strength: Optional[str] = "500mg"
+    batch_id: str
+    manufacturing_date: datetime
+    expiry_date: datetime
+    manufacturer: str = "ABC Pharma"
+    assigned_retailer: Optional[str] = "Pharmacy A"
+    quantity: Optional[int] = 100
+    product_id: Optional[str] = None
+
+class ProductResponse(BaseModel):
+    id: str
+    product_id: str
+    medicine: str
+    dosage: Optional[str] = None
+    batch_id: str
+    manufacturer: str
+    assigned_retailer: Optional[str] = None
+    manufacturing_date: datetime
+    expiry_date: datetime
+    quantity: int = 100
+    status: str
+    qr_payload: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ProductAssignRetailerRequest(BaseModel):
+    retailer_name: str
+    retailer_id: Optional[str] = None
+
+class RetailerVerifyRequest(BaseModel):
+    product_id: Optional[str] = None
+    qr_detected: bool = True
+    package_image_url: Optional[str] = None
+    printed_expiry_override: Optional[str] = None
+    medicine_name_ocr: Optional[str] = None
+    batch_ocr: Optional[str] = None
+    expiry_ocr: Optional[str] = None
+    manufacturer_ocr: Optional[str] = None
+    location: str = "Pharmacy A"
+    scanner_role: str = "RETAILER"
+
+class RetailerVerifyResponse(BaseModel):
+    status_verdict: str # VERIFIED, LABEL_TAMPERING, UNKNOWN_PRODUCT, EXPIRED, REENTRY_FRAUD, QR_NOT_DETECTED
+    title: str
+    product_id: Optional[str] = None
+    medicine_name: Optional[str] = None
+    batch_number: Optional[str] = None
+    registered_expiry: Optional[str] = None
+    detected_expiry: Optional[str] = None
+    manufacturer: Optional[str] = None
+    assigned_retailer: Optional[str] = None
+    lifecycle_status: Optional[str] = None
+    message: str
+    risk_score: int = 0
+    severity: str = "LOW"
+    checks: Dict[str, Any] = {}
+    comparison: List[Dict[str, Any]] = []
+    incident_id: Optional[str] = None
+    recommendation: str

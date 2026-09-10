@@ -5,7 +5,7 @@ import { api } from '../services/api';
 import { Alert } from '../types';
 import {
   ShieldAlert, ScanLine, LayoutDashboard, Store, Truck,
-  Factory, Scale, Bell, Check, UserCheck, ChevronDown, RotateCcw
+  Factory, Scale, Bell, Check, UserCheck, ChevronDown, RotateCcw, QrCode
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -44,7 +44,8 @@ export const Navbar: React.FC = () => {
 
   const navLinks = [
     { path: '/dashboard', label: 'Command Center', icon: LayoutDashboard },
-    { path: '/scan', label: 'Verify Batch', icon: ScanLine, highlight: true },
+    { path: '/verify', label: 'Verify Medicine', icon: ScanLine, highlight: true },
+    { path: '/manufacturer/register', label: 'Register Medicine', icon: QrCode },
     { path: '/retailer', label: 'Pharmacy', icon: Store },
     { path: '/distributor', label: 'Distributor', icon: Truck },
     { path: '/manufacturer', label: 'Manufacturer', icon: Factory },

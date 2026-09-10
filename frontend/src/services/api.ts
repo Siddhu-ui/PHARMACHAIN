@@ -1,7 +1,8 @@
 import {
   User, Batch, BatchEvent, ReturnRequest, Pickup,
   DestructionRecord, FraudIncident, Alert, ScanVerifyResponse,
-  OCRAnalyzeResponse, DashboardStats, Role
+  OCRAnalyzeResponse, DashboardStats, Role,
+  Product, ProductRegisterRequest, RetailerVerifyRequest, RetailerVerifyResponse
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -229,5 +230,34 @@ export const api = {
   },
   async executeDemoStep(stepId: number): Promise<{ step: number; message: string; incident_id?: string }> {
     return request(`/demo/step/${stepId}`, { method: 'POST' });
+  },
+
+  // Products & Retailer Verification
+  async registerProduct(data: ProductRegisterRequest): Promise<Product> {
+    return request('/products/register', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+  async getProducts(): Promise<Product[]> {
+    return request('/products');
+  },
+  async getProduct(productId: string): Promise<Product> {
+    return request(`/products/${productId}`);
+  },
+  async assignRetailer(productId: string, retailerName: string, retailerId?: string): Promise<Product> {
+    return request(`/products/${productId}/assign-retailer`, {
+      method: 'POST',
+      body: JSON.stringify({ retailer_name: retailerName, retailer_id: retailerId })
+    });
+  },
+  async getProductQR(productId: string): Promise<{ product_id: string; qr_payload: string }> {
+    return request(`/products/${productId}/qr`);
+  },
+  async verifyRetailerPackage(data: RetailerVerifyRequest): Promise<RetailerVerifyResponse> {
+    return request('/products/verify-retailer', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
   }
 };

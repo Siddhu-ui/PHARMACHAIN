@@ -63,6 +63,11 @@ class Batch(Base):
     status = Column(String(50), nullable=False, default="REGISTERED") # REGISTERED, ACTIVE, EXPIRING_SOON, EXPIRED, RETURN_REQUESTED, PICKUP_CONFIRMED, IN_TRANSIT, RECEIVED_BY_MANUFACTURER, AWAITING_DESTRUCTION, DESTRUCTION_VERIFIED, CLOSED, SUSPICIOUS, REENTRY_DETECTED
     original_retailer_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     current_location = Column(String(255), nullable=False)
+    product_id = Column(String(100), unique=True, nullable=True, index=True)
+    qr_payload = Column(String(255), nullable=True)
+    assigned_retailer_name = Column(String(255), nullable=True)
+    dosage_strength = Column(String(100), nullable=True)
+    manufacturer_name = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

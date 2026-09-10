@@ -22,6 +22,36 @@ Follow this exact step-by-step presentation script to demonstrate the PharmaGuar
 
 ---
 
+## DEMO 0: Manufacturer Medicine Registration & QR Generation
+
+Demonstrate manufacturer registration of a physical package, deterministic unique Product ID generation, and tamper-resistant QR code generation.
+
+1. **Step 1: Open Register Medicine**
+   - Click **Register Medicine** in top navbar or go to [http://localhost:5173/manufacturer/register](http://localhost:5173/manufacturer/register).
+   - Switch actor to **Kavita Reddy (Sun Pharma QA)**.
+2. **Step 2: Enter Product Details (or click "Fill Demo Product")**:
+   - **Medicine Name**: `Paracetamol 500mg`
+   - **Strength / Dosage**: `500mg`
+   - **Batch ID**: `PCM-BATCH-001`
+   - **Manufacturing Date**: `15/08/2024`
+   - **Expiry Date**: `15/08/2026`
+   - **Manufacturer**: `ABC Pharma`
+   - **Assign Retailer**: `Pharmacy A`
+   - **Quantity**: `100` strips
+3. **Step 3: Observe Deterministic Product ID Preview**:
+   - Live generated Product ID: `PG-PCM-2026-000123`
+   - Format follows deterministic standard: `PG-{MEDICINE_CODE}-{YEAR}-{SEQUENCE}`.
+   - User cannot manually tamper with or enter the Product ID.
+4. **Step 4: Click [ Generate Product & QR ]**:
+   - Displays rendered QR code.
+   - QR payload contains **strictly**: `"PG-PCM-2026-000123"` (no metadata encoded).
+   - Click **Download QR (PNG)** to export the physical label asset.
+5. **Step 5: View Authoritative Registry**:
+   - Click **View Registered Products Table** (`/manufacturer/products`).
+   - Observe table row with Product ID, Medicine, Batch, Retailer, MFG, EXP, Status (`ACTIVE`), and `[View QR]` action.
+
+---
+
 ## DEMO 1: Normal Reverse Logistics Lifecycle
 
 Demonstrate how expired medicines are systematically tracked through physical handoffs to authorized destruction.
@@ -53,7 +83,48 @@ Demonstrate how expired medicines are systematically tracked through physical ha
 
 ---
 
-## DEMO 2: The P0 Wow Moment — Re-entry Fraud Interception
+## DEMO 2: Retailer Package Verification Before Sale (Manual Image Upload)
+
+Demonstrate manual photo upload by a retail pharmacist before dispensing medicine to patients.
+
+1. **Navigate to Verify Medicine** (`/retailer/verify` or click **Verify Medicine** in top navbar).
+2. **Case A — 🟢 Valid Product Verification**:
+   - Select preset **🟢 Case A: Valid Paracetamol 500mg** (or upload `blister_valid_pcm.svg`).
+   - System decodes QR: `PG-PCM-2026-000123`.
+   - Click **Verify Product Before Sale**.
+   - *Result*: 🟢 **`PRODUCT VERIFIED`**
+   - Message: *"Package information matches the registered product record."*
+   - Side-by-side comparison confirms 100% attribute match against manufacturer ledger.
+3. **Case B — 🔴 Label Inconsistency (Tampered Shelf Life)**:
+   - Select preset **🔴 Case B: Label Tampering (2028 vs 2026)**.
+   - Registered Expiry: `15/08/2026` vs Printed OCR Expiry: `15/08/2028`.
+   - Click **Verify Product Before Sale**.
+   - *Result*: 🔴 **`LABEL INCONSISTENCY DETECTED`**
+   - Risk: **85/100 (CRITICAL)**.
+   - Creates incident in Regulator Gateway.
+4. **Case C — 🔴 Unknown Counterfeit Product**:
+   - Select preset **🔴 Case C: Unknown Product**.
+   - Detected Product ID: `PG-UNKNOWN-999`.
+   - Click **Verify Product Before Sale**.
+   - *Result*: 🔴 **`UNKNOWN PRODUCT`**
+   - Message: *"Product ID is not present in the registered supply-chain database."*
+5. **Case D — 🟠 Expired Medicine**:
+   - Select preset **🟠 Case D: Expired Medicine**.
+   - Click **Verify Product Before Sale**.
+   - *Result*: 🟠 **`PRODUCT EXPIRED`**
+   - Message: *"DO NOT SELL / RETURN REQUIRED."*
+   - Provides direct button to initiate compliant reverse-chain return.
+6. **Case E — 🚨 Destroyed Re-Entry Fraud**:
+   - Select preset **🚨 Case E: Re-Entry Fraud (PCM999888)**.
+   - Click **Verify Product Before Sale**.
+   - *Result*: 🚨 **`POTENTIAL RE-ENTRY FRAUD`**
+   - Risk: **95/100 (CRITICAL)**.
+   - Recommendation: *"DO NOT ACCEPT OR DISPENSE: Previously destroyed batch re-entry detected."*
+
+---
+
+## DEMO 3: The P0 Wow Moment — Re-entry Fraud Interception
+
 
 Demonstrate how PharmaGuard prevents destroyed medicines from being illegally resold.
 

@@ -180,6 +180,8 @@ def seed_database(db: Session = None):
         now = datetime.utcnow()
         batch_pcm = Batch(
             batch_number="PCM500123",
+            product_id="PG-PCM-2026-500123",
+            qr_payload="PG-PCM-2026-500123",
             medicine_id=med_pcm.id,
             manufacturer_id=org_mfg_1.id,
             manufacturing_date=datetime(2023, 8, 15),
@@ -188,7 +190,28 @@ def seed_database(db: Session = None):
             unit="STRIPS",
             status=BatchStatus.EXPIRED,
             original_retailer_id=org_pharm_a.id,
+            assigned_retailer_name="Apollo Pharmacy - Indiranagar",
+            dosage_strength="500mg",
+            manufacturer_name="Sun Pharma Laboratories Ltd.",
             current_location="Apollo Pharmacy - Indiranagar, Bengaluru"
+        )
+
+        batch_new_pcm = Batch(
+            batch_number="PCM-BATCH-001",
+            product_id="PG-PCM-2026-000123",
+            qr_payload="PG-PCM-2026-000123",
+            medicine_id=med_pcm.id,
+            manufacturer_id=org_mfg_1.id,
+            manufacturing_date=datetime(2024, 8, 15),
+            expiry_date=datetime(2026, 8, 15),
+            quantity=100,
+            unit="STRIPS",
+            status=BatchStatus.ACTIVE,
+            original_retailer_id=org_pharm_a.id,
+            assigned_retailer_name="Pharmacy A",
+            dosage_strength="500mg",
+            manufacturer_name="ABC Pharma",
+            current_location="Pharmacy A"
         )
 
         batch_amx = Batch(
@@ -245,6 +268,8 @@ def seed_database(db: Session = None):
 
         batch_destroyed = Batch(
             batch_number="PCM999888",
+            product_id="PG-PCM-2026-999888",
+            qr_payload="PG-PCM-2026-999888",
             medicine_id=med_pcm.id,
             manufacturer_id=org_mfg_1.id,
             manufacturing_date=now - timedelta(days=900),
@@ -253,6 +278,9 @@ def seed_database(db: Session = None):
             unit="STRIPS",
             status=BatchStatus.DESTRUCTION_VERIFIED,
             original_retailer_id=org_pharm_a.id,
+            assigned_retailer_name="Apollo Pharmacy - Indiranagar",
+            dosage_strength="500mg",
+            manufacturer_name="Sun Pharma Laboratories Ltd.",
             current_location="EcoSafe Bio-Medical Destruction Facility"
         )
 
@@ -309,7 +337,7 @@ def seed_database(db: Session = None):
         )
 
         db.add_all([
-            batch_pcm, batch_amx, batch_azi, batch_met, batch_pan,
+            batch_pcm, batch_new_pcm, batch_amx, batch_azi, batch_met, batch_pan,
             batch_destroyed, batch_mismatch, batch_reentry, batch_return_req, batch_transit
         ])
         db.commit()
