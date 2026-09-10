@@ -5,7 +5,7 @@ import { api } from '../services/api';
 import { Alert } from '../types';
 import {
   ShieldAlert, ScanLine, LayoutDashboard, Store, Truck,
-  Factory, Scale, Bell, Check, UserCheck, ChevronDown
+  Factory, Scale, Bell, Check, UserCheck, ChevronDown, RotateCcw
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
@@ -63,10 +63,10 @@ export const Navbar: React.FC = () => {
               </div>
               <div>
                 <span className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent">
-                  PharmaGuard
+                  PHARMAGUARD
                 </span>
-                <span className="block text-[10px] font-mono tracking-widest text-slate-400 -mt-1 uppercase">
-                  Reverse Chain AI
+                <span className="block text-[9px] font-mono tracking-widest text-slate-400 -mt-0.5 uppercase">
+                  AI-Assisted Pharma Reverse Chain Compliance
                 </span>
               </div>
             </Link>
@@ -101,7 +101,33 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* Right Action Icons & Role Switcher */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* Demo Mode Pill */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono text-[11px] font-bold tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              DEMO MODE
+            </div>
+
+            {/* Quick Reset Demo Action */}
+            <button
+              onClick={async () => {
+                if (window.confirm("Reset PharmaGuard demo database to clean baseline?")) {
+                  try {
+                    await api.resetDemo();
+                    alert("Demo environment reset successfully.");
+                    window.location.reload();
+                  } catch (e: any) {
+                    alert(`Reset failed: ${e.message}`);
+                  }
+                }
+              }}
+              title="Reset demo database to clean baseline"
+              className="hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/40 text-xs font-mono text-slate-300 hover:text-amber-300 transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+              <span>Reset Demo</span>
+            </button>
+
             {/* Alert Bell Popover */}
             <div className="relative">
               <button

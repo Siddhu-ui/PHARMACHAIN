@@ -5,8 +5,9 @@ import { useAuth } from '../context/AuthContext';
 import { RiskScoreBadge } from '../components/RiskScoreBadge';
 import { IncidentReportModal } from '../components/IncidentReportModal';
 import {
-  Scale, ShieldAlert, AlertTriangle, CheckCircle2, FileText,
-  Search, Filter, ExternalLink, User, Building, MapPin, Eye
+  Scale, ShieldAlert, AlertTriangle, FileText,
+  ExternalLink, Building, Store, Factory, BellRing,
+  CheckCircle2, Clock
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -73,20 +74,20 @@ export const RegulatorPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 pb-32">
-      {/* Header */}
+      {/* Header — Section 7: CDSCO-ready Regulator Alert Gateway */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-mono text-rose-400 uppercase tracking-wider mb-1">
-            <Scale className="w-3.5 h-3.5" /> CDSCO Central Drugs Standard Control Organisation
+            <Scale className="w-3.5 h-3.5" /> CDSCO-ready Regulator Alert Gateway
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-            <span>Regulator Incident Management Gateway</span>
+            <span>Regulator Incident Feed — Demo</span>
             <span className="text-xs px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 font-mono font-medium">
-              HIGH ENFORCEMENT
+              LIVE GATEWAY
             </span>
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Autonomous multi-signal fraud interception: Re-entry detection, label tampering, and reverse chain audits.
+            AI-assisted risk detection &amp; statutory compliance console. Enforces immediate multi-stakeholder alert broadcasts upon boundary breach.
           </p>
         </div>
 
@@ -100,6 +101,39 @@ export const RegulatorPage: React.FC = () => {
               <span>Export Statutory Report</span>
             </button>
           )}
+        </div>
+      </div>
+
+      {/* 3 Alert Broadcast Channels Header Banner */}
+      <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+        <div className="flex items-center justify-between text-xs font-mono text-slate-400 font-bold uppercase tracking-wider">
+          <span className="flex items-center gap-1.5 text-emerald-400">
+            <BellRing className="w-3.5 h-3.5" /> Coordinated Stakeholder Alert Gateway
+          </span>
+          <span className="text-[11px] text-slate-500">Autonomous 3-Way Broadcast Activated on Critical Severity</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
+          <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/40 flex items-center gap-3">
+            <Scale className="w-6 h-6 text-rose-400 shrink-0" />
+            <div>
+              <span className="font-bold text-white block">1. REGULATOR</span>
+              <span className="text-slate-300 text-[11px]">Statutory enforcement dossier &amp; seizure warrant generation.</span>
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/40 flex items-center gap-3">
+            <Factory className="w-6 h-6 text-amber-400 shrink-0" />
+            <div>
+              <span className="font-bold text-white block">2. MANUFACTURER</span>
+              <span className="text-slate-300 text-[11px]">Immediate quarantine directive &amp; QA investigation mandate.</span>
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-blue-950/30 border border-blue-500/40 flex items-center gap-3">
+            <Store className="w-6 h-6 text-blue-400 shrink-0" />
+            <div>
+              <span className="font-bold text-white block">3. RETAILER</span>
+              <span className="text-slate-300 text-[11px]">Point-of-sale lock &amp; &ldquo;DO NOT ACCEPT OR DISPENSE&rdquo; freeze.</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -185,20 +219,24 @@ export const RegulatorPage: React.FC = () => {
                     <span className="text-xs font-mono font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/30">
                       {selectedIncident.incident_type}
                     </span>
-                    <span className="text-xs text-slate-500 font-mono">
-                      INCIDENT REF: {selectedIncident.id.slice(0, 8)}
+                    <span className="text-xs text-slate-400 font-mono">
+                      ID: {selectedIncident.id}
                     </span>
                   </div>
                   <h2 className="text-xl font-extrabold text-white mt-2">
-                    Investigative Dossier: Batch {selectedIncident.batch?.batch_number || selectedIncident.batch_id}
+                    Case Dossier: Batch {selectedIncident.batch?.batch_number || selectedIncident.batch_id}
                   </h2>
                 </div>
 
-                <RiskScoreBadge
-                  score={selectedIncident.risk_score}
-                  severity={selectedIncident.severity}
-                  size="lg"
-                />
+                <div className="flex flex-col items-end">
+                  <div className="flex items-baseline gap-1 font-mono">
+                    <span className="text-3xl font-black text-rose-400">{selectedIncident.risk_score}</span>
+                    <span className="text-xs text-slate-400">/ 100</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-rose-600 text-white font-mono text-[10px] font-bold uppercase mt-1">
+                    {selectedIncident.severity}
+                  </span>
+                </div>
               </div>
 
               {/* Status Update Action Bar */}
@@ -221,32 +259,46 @@ export const RegulatorPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Batch Metadata Cards */}
+              {/* Comprehensive Metadata Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-slate-500 block">Incident ID</span>
+                  <span className="text-slate-200 font-bold truncate block">{selectedIncident.id.slice(0, 10)}...</span>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-slate-500 block">Batch ID</span>
+                  <span className="text-white font-bold">{selectedIncident.batch?.batch_number || selectedIncident.batch_id}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block">Medicine</span>
-                  <span className="text-white font-bold">{selectedIncident.batch?.medicine?.name || 'Paracetamol 500mg'}</span>
+                  <span className="text-slate-200 font-bold">{selectedIncident.batch?.medicine?.name || 'Paracetamol 500mg'}</span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block">Manufacturer</span>
                   <span className="text-slate-200">{selectedIncident.batch?.medicine?.manufacturer || 'Sun Pharma'}</span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block">Registered Expiry</span>
-                  <span className="text-slate-200">
-                    {selectedIncident.batch?.expiry_date ? new Date(selectedIncident.batch.expiry_date).toLocaleDateString('en-IN') : '15/08/2026'}
-                  </span>
+                  <span className="text-slate-500 block">Pharmacy / Scanner</span>
+                  <span className="text-slate-200 truncate block">{selectedIncident.batch?.current_location || selectedIncident.detected_by || 'MedPlus Pharmacy'}</span>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 block">Batch Status</span>
-                  <span className="text-rose-400 font-bold">{selectedIncident.batch?.status}</span>
+                  <span className="text-rose-400 font-bold">{selectedIncident.batch?.status || 'REENTRY_DETECTED'}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-slate-500 block">Risk Score</span>
+                  <span className="text-rose-400 font-bold">{selectedIncident.risk_score} / 100</span>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                  <span className="text-slate-500 block">Current Status</span>
+                  <span className="text-amber-400 font-bold uppercase">{selectedIncident.status}</span>
                 </div>
               </div>
 
-              {/* Violation Description */}
+              {/* Detection Reason */}
               <div className="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/30 text-xs space-y-2">
                 <div className="font-bold text-rose-300 uppercase tracking-wider flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-rose-400" /> Automated Compliance Finding
+                  <ShieldAlert className="w-4 h-4 text-rose-400" /> Detection Reason
                 </div>
                 <p className="text-slate-200 leading-relaxed text-sm">{selectedIncident.description}</p>
               </div>
@@ -255,7 +307,7 @@ export const RegulatorPage: React.FC = () => {
               {selectedIncident.evidence && (
                 <div className="space-y-2">
                   <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Multi-Signal Evidence Log
+                    Evidence Bundle &amp; Multi-Signal Log
                   </div>
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 font-mono text-xs text-emerald-400 overflow-x-auto">
                     <pre>{JSON.stringify(JSON.parse(selectedIncident.evidence), null, 2)}</pre>
@@ -271,7 +323,7 @@ export const RegulatorPage: React.FC = () => {
                   </div>
                   <Link
                     to={`/batches/${selectedIncident.batch?.batch_number || selectedIncident.batch_id}`}
-                    className="text-xs text-emerald-400 hover:underline flex items-center gap-1"
+                    className="text-xs text-emerald-400 hover:underline flex items-center gap-1 font-bold"
                   >
                     <span>Full Ledger</span>
                     <ExternalLink className="w-3 h-3" />

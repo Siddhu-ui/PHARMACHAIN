@@ -177,6 +177,8 @@ export interface DashboardStats {
   suspicious_batches: number;
   critical_incidents: number;
   recovered_fraud: number;
+  in_transit?: number;
+  awaiting_destruction?: number;
   status_distribution: { status: string; count: number }[];
   fraud_by_type: { type: string; count: number }[];
   risk_distribution: { severity: string; count: number }[];

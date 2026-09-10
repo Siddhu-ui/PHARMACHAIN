@@ -13,7 +13,16 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ...(options.headers || {})
   };
 
-  const response = await fetch(url, { ...options, headers });
+  let response: Response;
+  try {
+    response = await fetch(url, { ...options, headers });
+  } catch (err: any) {
+    if (err.name === 'TypeError' || err.message?.includes('fetch') || err.message?.includes('NetworkError')) {
+      throw new Error('Backend unavailable. Please start PharmaGuard using start_pharmaguard.bat.');
+    }
+    throw new Error('Backend unavailable. Please start PharmaGuard using start_pharmaguard.bat.');
+  }
+
   if (!response.ok) {
     let errorDetail = 'API request failed';
     try {
@@ -22,6 +31,19 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     } catch {
       errorDetail = await response.text();
     }
+
+    if (response.status === 404) {
+      if (endpoint.includes('/batches')) {
+        errorDetail = 'Batch not found.';
+      } else if (endpoint.includes('/fraud/incidents')) {
+        errorDetail = 'Incident record not found.';
+      } else {
+        errorDetail = 'Requested resource not found.';
+      }
+    } else if (response.status === 500) {
+      errorDetail = 'Internal server error. Please check backend logs.';
+    }
+
     throw new Error(errorDetail);
   }
   return response.json();

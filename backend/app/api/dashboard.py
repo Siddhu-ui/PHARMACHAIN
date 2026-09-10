@@ -36,6 +36,12 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     suspicious_batches = db.query(Batch).filter(
         Batch.status.in_([BatchStatus.SUSPICIOUS, BatchStatus.REENTRY_DETECTED])
     ).count()
+    in_transit = db.query(Batch).filter(
+        Batch.status.in_([BatchStatus.IN_TRANSIT, BatchStatus.PICKUP_CONFIRMED])
+    ).count()
+    awaiting_destruction = db.query(Batch).filter(
+        Batch.status.in_([BatchStatus.AWAITING_DESTRUCTION, BatchStatus.RECEIVED_BY_MANUFACTURER])
+    ).count()
     critical_incidents = db.query(FraudIncident).filter(
         FraudIncident.severity.in_(["CRITICAL", "HIGH"])
     ).count()
@@ -45,9 +51,10 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
     # Status Distribution
     all_statuses = [
-        BatchStatus.ACTIVE, BatchStatus.EXPIRING_SOON, BatchStatus.EXPIRED,
-        BatchStatus.RETURN_REQUESTED, BatchStatus.IN_TRANSIT,
-        BatchStatus.DESTRUCTION_VERIFIED, BatchStatus.SUSPICIOUS, BatchStatus.REENTRY_DETECTED
+        BatchStatus.REGISTERED, BatchStatus.ACTIVE, BatchStatus.EXPIRING_SOON, BatchStatus.EXPIRED,
+        BatchStatus.RETURN_REQUESTED, BatchStatus.PICKUP_CONFIRMED, BatchStatus.IN_TRANSIT,
+        BatchStatus.RECEIVED_BY_MANUFACTURER, BatchStatus.AWAITING_DESTRUCTION,
+        BatchStatus.DESTRUCTION_VERIFIED, BatchStatus.CLOSED, BatchStatus.SUSPICIOUS, BatchStatus.REENTRY_DETECTED
     ]
     status_distribution = []
     for s in all_statuses:
@@ -83,6 +90,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         suspicious_batches=suspicious_batches,
         critical_incidents=critical_incidents,
         recovered_fraud=recovered_fraud,
+        in_transit=in_transit,
+        awaiting_destruction=awaiting_destruction,
         status_distribution=status_distribution,
         fraud_by_type=fraud_by_type,
         risk_distribution=risk_distribution,

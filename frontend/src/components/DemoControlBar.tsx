@@ -58,11 +58,14 @@ export const DemoControlBar: React.FC<Props> = ({ onScenarioStepExecuted }) => {
   };
 
   const handleReset = async () => {
+    if (!window.confirm("Reset PharmaGuard demo database to clean baseline? This will restore all default batches and clear test incidents.")) {
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.resetDemo();
       setActiveStep(null);
-      setStatusMsg(res.message);
+      setStatusMsg("✅ Demo environment reset successfully.");
       if (onScenarioStepExecuted) {
         onScenarioStepExecuted();
       }
@@ -84,7 +87,10 @@ export const DemoControlBar: React.FC<Props> = ({ onScenarioStepExecuted }) => {
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
             </span>
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" /> Hackathon Demo Scenario Controller
+              <Sparkles className="w-3.5 h-3.5" /> Hackathon Demo Controller
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold">
+              DEMO MODE
             </span>
             {statusMsg && (
               <span className="text-xs text-slate-300 bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-700 font-mono truncate max-w-md">

@@ -1,138 +1,126 @@
-# PHARMACHAIN — PharmaGuard AI-Assisted Reverse Logistics Platform
+# PHARMAGUARD
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](https://opensource.org/licenses/MIT)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react)](https://reactjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6.svg?logo=typescript)](https://www.typescriptlang.org)
-[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-3.4+-38B2AC.svg?logo=tailwind-css)](https://tailwindcss.com)
+> **AI-assisted pharmaceutical reverse-chain compliance and fraud detection platform.**
 
-PharmaGuard is an enterprise-grade AI-assisted closed-loop pharmaceutical reverse logistics platform. It tracks medicine batches across the reverse supply chain (**Retailer → Distributor → Manufacturer → Authorized Waste Facility → Verified Destruction**), preventing illegal re-entry of expired/destroyed medicines and detecting package label tampering.
+PharmaGuard provides closed-loop reverse logistics tracking for pharmaceuticals across all handoff stages (**Pharmacy Retailer → Logistics Distributor → Manufacturer Quarantine → State-Authorized Waste Facility → Verified Destruction**). It enforces deterministic statutory compliance, uses computer vision OCR for package label tampering inspection, and applies Isolation Forest machine learning to flag behavioral supply chain anomalies.
 
 ---
 
-## 1. Architecture & Reverse Chain State Machine
+## Quick Start (One-Command Startup)
 
-PharmaGuard maintains a cryptographic, immutable event ledger for every pharmaceutical batch:
+1. Open the project root folder in your terminal:
+   ```cmd
+   cd c:\Users\admin\Documents\pharmathon
+   ```
+2. Run the Windows one-command startup batch script:
+   ```cmd
+   start_pharmaguard.bat
+   ```
+3. Open your browser:
+   - **Frontend Application**: [http://localhost:5173](http://localhost:5173)
+   - **Backend API Engine**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+   - **Interactive API Docs (Swagger UI)**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
+To safely stop all background processes, run:
+```cmd
+stop_pharmaguard.bat
 ```
-                                      [ Reverse Logistics Lifecycle ]
-  REGISTERED ──> ACTIVE ──> EXPIRED ──> RETURN_REQUESTED ──> PICKUP_CONFIRMED ──> IN_TRANSIT
-                                                                                   │
-  CLOSED <── DESTRUCTION_VERIFIED <── AWAITING_DESTRUCTION <── RECEIVED_BY_MANUFACTURER
-     │
-     └──> [ Scanned Again at Pharmacy B ] ──> 🚨 REENTRY_FRAUD DETECTED (Risk: 95/100)
-```
-
-- **Deterministic Rule Engine**: Authoritative for statutory decisions.
-- **Isolation Forest ML**: Continuous anomaly scoring over reverse chain behavioral metrics.
-- **OCR Computer Vision**: Scans printed blister pack dates against registered manufacturer records.
-- **Simulated Regulator Alert Gateway**: CDSCO incident notifications, evidence dossier, and PDF exports.
 
 ---
 
-## 2. Key Features
+## Demo Reset Instructions
 
-1. **Destroyed Batch Re-entry Interception (P0 Hackathon Wow Moment)**:
-   - When a batch verified as destroyed (`DESTRUCTION_VERIFIED`) re-enters the retail market, PharmaGuard detects it within milliseconds, calculates risk score 95/100, transitions status to `REENTRY_DETECTED`, and fires alerts.
-2. **Expiry-Date Label Tampering Detection (P1 Wow Moment)**:
-   - Evaluates medicine blister pack images using OCR. If the printed label displays `15/08/2028` while manufacturer registration specifies `15/08/2026`, it immediately flags `LABEL_TAMPERING`.
-3. **Multi-Signal Verification Hub**:
-   - Compares QR validity, batch existence, location legitimacy, duplicate scan frequency, and ML isolation score.
-4. **Physical Handoff & Weight Reconciliation**:
-   - Distributor records physical item count and scale weight (e.g. 5.2 kg) to catch in-transit theft or diversion.
-5. **Authorized Waste Certificate Reconciliation**:
-   - Validates destruction certificate numbers, state-authorized disposal facilities, and destroyed quantities.
-6. **Floating 1-Click Demo Controller**:
-   - Persistent quick-action bar enabling instant execution of the 9-step hackathon presentation flow.
+PharmaGuard includes a 1-click safe demo reset that clears test transactions and restores the baseline pharmaceutical batches and custody ledgers in the local canonical SQLite database (`backend/pharmaguard.db`):
+
+- **From the UI**: Click the **Reset Demo** button in the floating bottom controller or the top navigation bar (includes confirmation prompt).
+- **Via API**:
+  ```bash
+  curl -X POST http://127.0.0.1:8000/api/demo/reset
+  ```
 
 ---
 
-## 3. Technology Stack
+## Demo Users & Roles
 
-- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, Lucide React, Recharts, jsPDF, canvas-confetti.
-- **Backend**: Python 3.13, FastAPI, Pydantic v2, SQLAlchemy ORM.
-- **Database**: PostgreSQL (Supabase compatible) with offline SQLite fallback (`pharmaguard.db`).
-- **AI / ML**: scikit-learn `IsolationForest`, OpenCV / OCR date parser with visual bounding box geometry.
+PharmaGuard supports instant role switching from the top-right workspace profile switcher (no passwords required for local demo):
 
----
-
-## 4. Quickstart & Installation
-
-### Prerequisites
-- Node.js v18+ & npm
-- Python 3.10+
-
-### Backend Setup
-```bash
-# Navigate to backend
-cd backend
-
-# Activate virtual environment (Windows)
-.\venv\Scripts\Activate.ps1
-# (Linux/macOS: source venv/bin/activate)
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run test suite
-pytest tests/test_compliance.py -v
-
-# Start FastAPI server
-uvicorn app.main:app --reload --port 8000
-```
-Backend will be live at: `http://localhost:8000` (API Docs at `http://localhost:8000/docs`).
-
-### Frontend Setup
-```bash
-# In a new terminal, navigate to frontend
-cd frontend
-
-# Install npm packages
-npm install
-
-# Start development server
-npm run dev
-```
-Frontend will be live at: `http://localhost:5173`.
-
----
-
-## 5. Mandatory Hackathon Demo Scenario (1-Click or Manual)
-
-Use the floating **Hackathon Demo Controller** at the bottom of the screen, or follow these exact steps:
-
-| Step | Actor | Action | Outcome |
+| Actor Role | Display Name | Organization | Login Email |
 |---|---|---|---|
-| **Step 1** | **Pharmacy A** | View expired Paracetamol batch `PCM500123` | Shows expired status; click **Create Return Request** |
-| **Step 2** | **Distributor** | Switch to Apex Logistics, confirm pickup | Enter expected 100, actual 100, weight 5.2 kg &rarr; status `PICKUP_CONFIRMED` |
-| **Step 3** | **Manufacturer** | Switch to Sun Pharma, confirm QA intake | Batch moved to quarantine bay &rarr; status `RECEIVED_BY_MANUFACTURER` |
-| **Step 4** | **Manufacturer** | Upload destruction certificate & verify | Certificate validated with EcoSafe Facility &rarr; status `DESTRUCTION_VERIFIED` |
-| **Step 5** | **Pharmacy B** | **THE WOW MOMENT**: Scan batch `PCM500123` | 🚨 **RE-ENTRY FRAUD DETECTED** (Risk: 95/100, CRITICAL alert sent to Regulator!) |
-| **Step 6** | **Any** | **SECOND WOW MOMENT**: Package OCR Inspection | Upload tampered pack with 2028 expiry &rarr; 🚨 **LABEL TAMPERING DETECTED**! |
+| **RETAILER** | Dr. Rajesh Sharma | Apollo Pharmacy - Indiranagar, Bengaluru | `pharmacy_a@pharmaguard.io` |
+| **RETAILER** | Ananya Iyer | MedPlus Pharmacy - Koramangala, Bengaluru | `pharmacy_b@pharmaguard.io` |
+| **DISTRIBUTOR** | Vikram Singh | Apex Healthcare Logistics Ltd., Bengaluru Hub | `distributor@pharmaguard.io` |
+| **MANUFACTURER** | Kavita Reddy | Sun Pharma Laboratories Ltd., Vadodara | `manufacturer@pharmaguard.io` |
+| **REGULATOR** | Inspector A. K. Verma | CDSCO Central Office, New Delhi | `regulator@pharmaguard.io` |
 
 ---
 
-## 6. Deterministic Risk Scoring Weights
+## Important Demo Scenarios
 
-| Violation Type | Added Risk Score |
-|---|---|
-| Destroyed Batch Re-entry | `+50` |
-| Expiry Mismatch (Label Tampering) | `+30` |
-| Destruction Certificate Mismatch | `+30` |
-| Quantity / Weight Discrepancy | `+20` |
-| Duplicate Scan Anomaly | `+20` |
-| Unexpected Retailer Node | `+15` |
-| Geographic Location Anomaly | `+15` |
-| Long Handoff Delay | `+10` |
-| ML Isolation Forest Anomaly | `+20` |
+### Scenario A — Expired Medicine Return Workflow
+1. Pharmacy A identifies expired Paracetamol batch `PCM500123` (registered expiry: `15/08/2026`).
+2. Creates return request (`RETURN_REQUESTED`).
+3. Apex Logistics confirms physical pickup, logs quantity 100 strips and scale weight 5.2 kg (`PICKUP_CONFIRMED` → `IN_TRANSIT`).
+4. Sun Pharma receives the return in their quarantine bay (`RECEIVED_BY_MANUFACTURER`).
+5. Batch is scheduled for disposal at EcoSafe Bio-Medical Facility (`AWAITING_DESTRUCTION`).
+
+### Scenario B — Verified Destruction
+1. Sun Pharma links the authorized certificate `CERT-ECO-2026-PCM123` issued by EcoSafe Bio-Medical Facility.
+2. The platform reconciles disposal certificate numbers, state waste authorization, and quantities.
+3. Batch status securely transitions to `DESTRUCTION_VERIFIED` / `CLOSED`.
+
+### Scenario C — Re-entry Fraud (P0 Hackathon Wow Moment)
+1. Using demo batch `PCM999888` (which was previously certified destroyed at EcoSafe):
+2. Scan or verify `PCM999888` at unauthorized MedPlus Pharmacy.
+3. Multi-signal rule engine detects that a destroyed batch has re-entered the market.
+4. Risk score: **95/100**, Severity: **CRITICAL**, Status: `REENTRY_DETECTED`.
+5. UI displays:
+   - 🚨 **FRAUD DETECTED**
+   - **95/100**
+   - **CRITICAL**
+   - **DO NOT ACCEPT OR DISPENSE**
+6. Automated alerts dispatched simultaneously to CDSCO Regulator, Sun Pharma Manufacturer, and Pharmacy Retailers.
+
+### Scenario D — OCR Label Tampering Inspection (P1 Wow Moment)
+1. Open the **Verify Batch** page (`/scan`) and select **Package OCR Inspection**.
+2. Select **Tampered Package** (preset demo imagery).
+3. Registered expiry: `15/08/2026`. Detected printed expiry: `15/08/2028`.
+4. OCR detects date extension fraud (`+30` risk score), moves status to `SUSPICIOUS`, logs `LABEL_TAMPERING` incident, and alerts the regulator.
+
+### Scenario E — Regulator Incident Dashboard
+1. Navigate to **Regulator Hub** (`/regulator`).
+2. Review open fraud incidents, evidence dossiers, chain-of-custody immutable timeline, and geographic node tags.
+3. Generate formal PDF Incident Reports with cryptographic evidence hashes for statutory enforcement.
 
 ---
 
-## 7. Verification Tests
+## System Architecture & AI Clarification
 
-Execute the automated test suite covering all compliance requirements:
+PharmaGuard implements a tiered compliance architecture and specifically distinguishes:
+
+1. **Deterministic Compliance Rules (Authoritative Decision Layer)**:
+   - Statutory compliance rules and finite-state machine transitions govern all authoritative decisions (e.g. destroyed batches cannot be dispensed).
+2. **Computer Vision & OCR (Package Inspection)**:
+   - Extracts printed batch numbers, manufacturing dates, and expiry dates from packaging to detect label manipulation. Preset blister pack images provide a reliable hackathon demonstration fallback.
+3. **Machine Learning Anomaly Detection (Isolation Forest)**:
+   - Analyzes multidimensional behavioral features (transit delays, quantity variance, duplicate scan frequencies, route anomalies) to compute an AI-assisted anomaly risk score.
+
+> [!NOTE]
+> PharmaGuard uses **AI-assisted risk detection** to alert stakeholders and flag anomalies. Statutory decisions remain rooted in immutable ledgers and deterministic compliance rules.
+
+---
+
+## Automated Verification
+
 ```bash
+# Run backend pytest compliance suite (10/10 passing):
+cd backend
+.\venv\Scripts\python.exe -m pytest tests/test_compliance.py -v
+
+# Run full end-to-end integration suite:
 $env:PYTHONPATH="backend"
-.\backend\venv\Scripts\python.exe -m pytest backend\tests\test_compliance.py -v
+.\backend\venv\Scripts\python.exe backend/tests/e2e_test_runner.py
+
+# Build frontend production bundle:
+cd ../frontend
+npm run build
 ```
-All 10 tests pass deterministically.

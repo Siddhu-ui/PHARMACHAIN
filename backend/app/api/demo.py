@@ -13,7 +13,7 @@ router = APIRouter(prefix="/demo", tags=["Demo Controller"])
 @router.post("/reset")
 def reset_demo_database(db: Session = Depends(get_db)):
     seed_database(db)
-    return {"message": "Demo database successfully reset to clean starting baseline."}
+    return {"message": "Demo environment reset successfully."}
 
 @router.post("/step/{step_id}")
 def execute_demo_step(step_id: int, db: Session = Depends(get_db)):

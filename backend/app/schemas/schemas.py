@@ -262,6 +262,8 @@ class DashboardStatsResponse(BaseModel):
     suspicious_batches: int
     critical_incidents: int
     recovered_fraud: int
+    in_transit: Optional[int] = 0
+    awaiting_destruction: Optional[int] = 0
     status_distribution: List[Dict[str, Any]]
     fraud_by_type: List[Dict[str, Any]]
     risk_distribution: List[Dict[str, Any]]
