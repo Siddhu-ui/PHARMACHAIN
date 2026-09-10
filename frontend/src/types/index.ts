@@ -155,6 +155,14 @@ export interface OCRBoundingBox {
   tampered?: boolean;
 }
 
+export interface OCRComparisonField {
+  field_name: string;
+  extracted_value: string;
+  database_value: string;
+  status: 'MATCH' | 'MISMATCH' | 'NOT_FOUND';
+  is_discrepancy: boolean;
+}
+
 export interface OCRAnalyzeResponse {
   extracted_batch_number?: string;
   extracted_expiry_date?: string;
@@ -162,10 +170,18 @@ export interface OCRAnalyzeResponse {
   extracted_medicine_name?: string;
   extracted_manufacturer?: string;
   registered_expiry_date?: string;
+  registered_medicine_name?: string;
+  registered_manufacturer?: string;
+  batch_status_in_db?: string;
+  verdict: 'MATCH' | 'TAMPERING' | 'UNKNOWN';
+  risk_score: number;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  recommendation?: string;
   is_tampered: boolean;
   tampering_description?: string;
   confidence_score: number;
   bounding_boxes: OCRBoundingBox[];
+  comparison_table?: OCRComparisonField[];
 }
 
 export interface DashboardStats {

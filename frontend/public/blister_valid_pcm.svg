@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="foilGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334155" />
+      <stop offset="50%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="pocketGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#475569" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.9" />
+    </linearGradient>
+    <filter id="pocketShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Foil Blister Card Backing -->
+  <rect x="10" y="10" width="480" height="300" rx="16" fill="url(#foilGrad)" stroke="#38bdf8" stroke-opacity="0.3" stroke-width="2"/>
+  
+  <!-- Metallic Grid Pattern -->
+  <path d="M10 70 H490 M10 130 H490 M10 190 H490 M10 250 H490" stroke="#64748b" stroke-opacity="0.15" stroke-width="1" stroke-dasharray="3,3"/>
+  <path d="M100 10 V310 M190 10 V310 M280 10 V310 M370 10 V310" stroke="#64748b" stroke-opacity="0.15" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <!-- Medicine Blister Pockets (2 rows of 4) -->
+  <g filter="url(#pocketShadow)">
+    <rect x="35" y="30" width="85" height="50" rx="25" fill="url(#pocketGrad)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="150" y="30" width="85" height="50" rx="25" fill="url(#pocketGrad)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="265" y="30" width="85" height="50" rx="25" fill="url(#pocketGrad)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="380" y="30" width="85" height="50" rx="25" fill="url(#pocketGrad)" stroke="#64748b" stroke-width="1.5"/>
+
+    <rect x="35" y="240" width="85" height="50" rx="25" fill="url(#pocketGrad)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="150" y="240" width="85" height="50" rx="25" fill="url(#pocketGrad)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="265" y="240" width="85" height="50" rx="25" fill="url(#pocketGrad)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="380" y="240" width="85" height="50" rx="25" fill="url(#pocketGrad)" stroke="#64748b" stroke-width="1.5"/>
+  </g>
+
+  <!-- Printed Pharmaceutical Label Area -->
+  <rect x="30" y="95" width="440" height="130" rx="8" fill="#090d16" fill-opacity="0.85" stroke="#10b981" stroke-width="1.5"/>
+
+  <!-- Verification Badge -->
+  <rect x="350" y="105" width="110" height="22" rx="4" fill="#064e3b" stroke="#10b981" stroke-width="1"/>
+  <text x="405" y="120" font-family="monospace" font-size="10" font-weight="bold" fill="#34d399" text-anchor="middle">VALID BATCH</text>
+
+  <!-- Extracted Field Texts -->
+  <text x="45" y="122" font-family="system-ui, sans-serif" font-size="16" font-weight="800" fill="#ffffff">
+    Paracetamol Tablets IP 500mg
+  </text>
+  <text x="45" y="138" font-family="monospace" font-size="11" fill="#94a3b8">
+    Brand: Calpol 500 • Analgesic &amp; Antipyretic
+  </text>
+
+  <line x1="45" y1="148" x2="455" y2="148" stroke="#334155" stroke-width="1"/>
+
+  <!-- Batch & Dates -->
+  <text x="45" y="170" font-family="monospace" font-size="12" font-weight="bold" fill="#38bdf8">
+    B.No. PCM500123
+  </text>
+
+  <text x="210" y="170" font-family="monospace" font-size="12" fill="#cbd5e1">
+    MFG. 15/08/2023
+  </text>
+
+  <text x="340" y="170" font-family="monospace" font-size="12" font-weight="bold" fill="#10b981">
+    EXP. 15/08/2026
+  </text>
+
+  <!-- Manufacturer -->
+  <text x="45" y="202" font-family="system-ui, sans-serif" font-size="11" fill="#94a3b8">
+    Mfd in India by: <tspan fill="#f1f5f9" font-weight="600">Sun Pharma Laboratories Ltd.</tspan>
+  </text>
+  <text x="45" y="217" font-family="monospace" font-size="9" fill="#64748b">
+    Mfg. Lic. No.: G/25/1884 • 10x10 Tablets Blister
+  </text>
+</svg>

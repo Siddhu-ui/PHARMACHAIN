@@ -162,6 +162,28 @@ export const api = {
       body: JSON.stringify(data)
     });
   },
+  async uploadOCR(file: File, batchNumber?: string): Promise<OCRAnalyzeResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (batchNumber) {
+      formData.append('batch_number', batchNumber);
+    }
+    const response = await fetch(`${API_BASE}/ocr/upload`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) {
+      let errText = 'Image upload and OCR analysis failed.';
+      try {
+        const errJson = await response.json();
+        errText = errJson.detail || errText;
+      } catch {
+        // fallback
+      }
+      throw new Error(errText);
+    }
+    return response.json();
+  },
 
   // Fraud & Incidents
   async getFraudIncidents(status?: string, severity?: string): Promise<FraudIncident[]> {

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="foilGradUnknown" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3d2806" />
+      <stop offset="50%" stop-color="#1f180f" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="pocketGradUnknown" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#475569" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.9" />
+    </linearGradient>
+  </defs>
+
+  <rect x="10" y="10" width="480" height="300" rx="16" fill="url(#foilGradUnknown)" stroke="#f59e0b" stroke-opacity="0.5" stroke-width="2"/>
+  
+  <path d="M10 70 H490 M10 130 H490 M10 190 H490 M10 250 H490" stroke="#64748b" stroke-opacity="0.15" stroke-width="1" stroke-dasharray="3,3"/>
+  <path d="M100 10 V310 M190 10 V310 M280 10 V310 M370 10 V310" stroke="#64748b" stroke-opacity="0.15" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <g>
+    <rect x="35" y="30" width="85" height="50" rx="25" fill="url(#pocketGradUnknown)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="150" y="30" width="85" height="50" rx="25" fill="url(#pocketGradUnknown)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="265" y="30" width="85" height="50" rx="25" fill="url(#pocketGradUnknown)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="380" y="30" width="85" height="50" rx="25" fill="url(#pocketGradUnknown)" stroke="#64748b" stroke-width="1.5"/>
+
+    <rect x="35" y="240" width="85" height="50" rx="25" fill="url(#pocketGradUnknown)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="150" y="240" width="85" height="50" rx="25" fill="url(#pocketGradUnknown)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="265" y="240" width="85" height="50" rx="25" fill="url(#pocketGradUnknown)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="380" y="240" width="85" height="50" rx="25" fill="url(#pocketGradUnknown)" stroke="#64748b" stroke-width="1.5"/>
+  </g>
+
+  <rect x="30" y="95" width="440" height="130" rx="8" fill="#181308" fill-opacity="0.94" stroke="#f59e0b" stroke-width="1.5"/>
+
+  <!-- Unknown Warning Banner -->
+  <rect x="310" y="105" width="150" height="22" rx="4" fill="#78350f" stroke="#f59e0b" stroke-width="1"/>
+  <text x="385" y="120" font-family="monospace" font-size="10" font-weight="bold" fill="#fde68a" text-anchor="middle">⚠ UNREGISTERED</text>
+
+  <text x="45" y="122" font-family="system-ui, sans-serif" font-size="16" font-weight="800" fill="#ffffff">
+    Acetaminophen 500mg
+  </text>
+  <text x="45" y="138" font-family="monospace" font-size="11" fill="#94a3b8">
+    Brand: Generic Acetaminophen • Unregistered Formulation
+  </text>
+
+  <line x1="45" y1="148" x2="455" y2="148" stroke="#451a03" stroke-width="1"/>
+
+  <rect x="40" y="155" width="165" height="24" rx="4" fill="#78350f" fill-opacity="0.4" stroke="#f59e0b" stroke-dasharray="2,2"/>
+  <text x="45" y="171" font-family="monospace" font-size="12" font-weight="bold" fill="#fde047">
+    B.No. FAKE-BATCH-999
+  </text>
+
+  <text x="220" y="171" font-family="monospace" font-size="12" fill="#cbd5e1">
+    MFG. 10/01/2024
+  </text>
+
+  <text x="340" y="171" font-family="monospace" font-size="12" font-weight="bold" fill="#f59e0b">
+    EXP. 10/01/2027
+  </text>
+
+  <text x="45" y="202" font-family="system-ui, sans-serif" font-size="11" fill="#94a3b8">
+    Mfd by: <tspan fill="#fde68a" font-weight="600">Apex Generic Laboratories (Unverified)</tspan>
+  </text>
+  <text x="45" y="217" font-family="monospace" font-size="9" font-weight="bold" fill="#fbbf24">
+    ⚠ Identity Not Found in PharmaGuard National Database Registry
+  </text>
+</svg>

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
@@ -55,5 +55,20 @@ def analyze_ocr(request: OCRAnalyzeRequest, db: Session = Depends(get_db)):
         db=db,
         override_batch_number=request.batch_number,
         image_name=request.image_url or "package_sample.png"
+    )
+    return OCRAnalyzeResponse(**result)
+
+@router.post("/ocr/upload", response_model=OCRAnalyzeResponse)
+async def upload_and_analyze_ocr(
+    file: UploadFile = File(...),
+    batch_number: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    contents = await file.read()
+    result = OCRService.analyze_package_image(
+        db=db,
+        image_bytes=contents,
+        image_name=file.filename,
+        override_batch_number=batch_number
     )
     return OCRAnalyzeResponse(**result)

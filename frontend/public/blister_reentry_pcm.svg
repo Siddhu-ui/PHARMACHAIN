@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 320" width="100%" height="100%">
+  <defs>
+    <linearGradient id="foilGradReentry" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4c0519" />
+      <stop offset="50%" stop-color="#1f121d" />
+      <stop offset="100%" stop-color="#0f172a" />
+    </linearGradient>
+    <linearGradient id="pocketGradReentry" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#475569" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.9" />
+    </linearGradient>
+  </defs>
+
+  <rect x="10" y="10" width="480" height="300" rx="16" fill="url(#foilGradReentry)" stroke="#f43f5e" stroke-opacity="0.6" stroke-width="2"/>
+  
+  <path d="M10 70 H490 M10 130 H490 M10 190 H490 M10 250 H490" stroke="#64748b" stroke-opacity="0.15" stroke-width="1" stroke-dasharray="3,3"/>
+  <path d="M100 10 V310 M190 10 V310 M280 10 V310 M370 10 V310" stroke="#64748b" stroke-opacity="0.15" stroke-width="1" stroke-dasharray="3,3"/>
+
+  <g>
+    <rect x="35" y="30" width="85" height="50" rx="25" fill="url(#pocketGradReentry)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="150" y="30" width="85" height="50" rx="25" fill="url(#pocketGradReentry)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="265" y="30" width="85" height="50" rx="25" fill="url(#pocketGradReentry)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="380" y="30" width="85" height="50" rx="25" fill="url(#pocketGradReentry)" stroke="#64748b" stroke-width="1.5"/>
+
+    <rect x="35" y="240" width="85" height="50" rx="25" fill="url(#pocketGradReentry)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="150" y="240" width="85" height="50" rx="25" fill="url(#pocketGradReentry)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="265" y="240" width="85" height="50" rx="25" fill="url(#pocketGradReentry)" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="380" y="240" width="85" height="50" rx="25" fill="url(#pocketGradReentry)" stroke="#64748b" stroke-width="1.5"/>
+  </g>
+
+  <rect x="30" y="95" width="440" height="130" rx="8" fill="#1e050c" fill-opacity="0.94" stroke="#f43f5e" stroke-width="2"/>
+
+  <!-- Re-entry Warning Banner -->
+  <rect x="310" y="105" width="150" height="22" rx="4" fill="#881337" stroke="#f43f5e" stroke-width="1"/>
+  <text x="385" y="120" font-family="monospace" font-size="10" font-weight="bold" fill="#fecdd3" text-anchor="middle">🚨 DESTROYED BATCH</text>
+
+  <text x="45" y="122" font-family="system-ui, sans-serif" font-size="16" font-weight="800" fill="#ffffff">
+    Paracetamol Tablets IP 500mg
+  </text>
+  <text x="45" y="138" font-family="monospace" font-size="11" fill="#94a3b8">
+    Brand: Calpol 500 • Certified Destroyed at EcoSafe
+  </text>
+
+  <line x1="45" y1="148" x2="455" y2="148" stroke="#4c0519" stroke-width="1"/>
+
+  <rect x="40" y="155" width="145" height="24" rx="4" fill="#881337" fill-opacity="0.4" stroke="#f43f5e"/>
+  <text x="45" y="171" font-family="monospace" font-size="12" font-weight="bold" fill="#fda4af">
+    B.No. PCM999888
+  </text>
+
+  <text x="210" y="171" font-family="monospace" font-size="12" fill="#cbd5e1">
+    MFG. 15/02/2023
+  </text>
+
+  <text x="340" y="171" font-family="monospace" font-size="12" font-weight="bold" fill="#f43f5e">
+    EXP. 15/08/2026
+  </text>
+
+  <text x="45" y="202" font-family="system-ui, sans-serif" font-size="11" fill="#94a3b8">
+    Mfd in India by: <tspan fill="#f1f5f9" font-weight="600">Sun Pharma Laboratories Ltd.</tspan>
+  </text>
+  <text x="45" y="217" font-family="monospace" font-size="9" font-weight="bold" fill="#fb7185">
+    🚨 RE-ENTRY DETECTED • Certificate: CERT-ECO-2026-PCM999
+  </text>
+</svg>

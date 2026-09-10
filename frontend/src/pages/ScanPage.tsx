@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { ScanVerifyResponse, OCRAnalyzeResponse } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -6,10 +6,13 @@ import { RiskScoreBadge } from '../components/RiskScoreBadge';
 import {
   ScanLine, ShieldAlert, CheckCircle2, AlertTriangle,
   FileSearch, Sparkles, ExternalLink, RefreshCw, MapPin, X,
-  ArrowRight, ShieldCheck, Check
+  ArrowRight, ShieldCheck, Check, Upload, Image as ImageIcon,
+  HelpCircle, Database, Eye, CheckCircle, Flame
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import confetti from 'canvas-confetti';
+
+type OCRScenarioType = 'match' | 'tampered' | 'reentry' | 'unknown' | 'custom';
 
 export const ScanPage: React.FC = () => {
   const { currentUser, currentRole } = useAuth();
@@ -27,7 +30,9 @@ export const ScanPage: React.FC = () => {
   // OCR State
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState<OCRAnalyzeResponse | null>(null);
-  const [ocrImagePreset, setOcrImagePreset] = useState<'tampered' | 'valid'>('tampered');
+  const [ocrScenario, setOcrScenario] = useState<OCRScenarioType>('tampered');
+  const [uploadedImagePreview, setUploadedImagePreview] = useState<string | null>('/blister_tampered_pcm.svg');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Error State
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -59,7 +64,6 @@ export const ScanPage: React.FC = () => {
       if (res.result === 'VERIFIED') {
         confetti({ particleCount: 50, spread: 60, origin: { y: 0.75 } });
       } else if (res.result === 'FRAUD') {
-        // Red alert celebration for wow moments
         confetti({
           particleCount: 100,
           spread: 80,
@@ -74,21 +78,50 @@ export const ScanPage: React.FC = () => {
     }
   };
 
-  const handleRunOCR = async (presetType: 'tampered' | 'valid') => {
+  const handleRunOCRScenario = async (scenario: OCRScenarioType) => {
     setOcrLoading(true);
-    setOcrImagePreset(presetType);
+    setOcrScenario(scenario);
     setErrorMessage(null);
-    const targetBatch = 'PCM500123';
+
+    let targetBatch = 'PCM500123';
+    let imageUrl = 'blister_valid_pcm.svg';
+
+    if (scenario === 'match') {
+      targetBatch = 'PCM500123';
+      imageUrl = '/blister_valid_pcm.svg';
+    } else if (scenario === 'tampered') {
+      targetBatch = 'PCM500123';
+      imageUrl = '/blister_tampered_pcm.svg';
+    } else if (scenario === 'reentry') {
+      targetBatch = 'PCM999888';
+      imageUrl = '/blister_reentry_pcm.svg';
+    } else if (scenario === 'unknown') {
+      targetBatch = 'FAKE-BATCH-999';
+      imageUrl = '/blister_unknown_fake.svg';
+    }
+
     setBatchInput(targetBatch);
+    setUploadedImagePreview(imageUrl);
 
     try {
       const res = await api.analyzeOCR({
         batch_number: targetBatch,
-        image_url: presetType === 'tampered' ? 'package_tampered_2028.png' : 'package_valid_2026.png'
+        image_url: imageUrl
       });
       setOcrResult(res);
 
-      // Immediately run verification check with OCR extracted date
+      if (res.verdict === 'MATCH') {
+        confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
+      } else if (res.verdict === 'TAMPERING') {
+        confetti({
+          particleCount: 100,
+          spread: 80,
+          origin: { y: 0.7 },
+          colors: ['#ef4444', '#dc2626', '#f87171']
+        });
+      }
+
+      // Synchronize with scan verification engine
       if (res.extracted_expiry_date) {
         await handleVerify(targetBatch, res.extracted_expiry_date);
       }
@@ -99,9 +132,46 @@ export const ScanPage: React.FC = () => {
     }
   };
 
+  const handleFileUpload = async (file: File) => {
+    setOcrLoading(true);
+    setOcrScenario('custom');
+    setErrorMessage(null);
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      setUploadedImagePreview(dataUrl);
+
+      try {
+        const res = await api.uploadOCR(file, batchInput);
+        setOcrResult(res);
+
+        if (res.verdict === 'MATCH') {
+          confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
+        } else if (res.verdict === 'TAMPERING') {
+          confetti({
+            particleCount: 100,
+            spread: 80,
+            origin: { y: 0.7 },
+            colors: ['#ef4444', '#dc2626', '#f87171']
+          });
+        }
+
+        if (res.extracted_batch_number) {
+          setBatchInput(res.extracted_batch_number);
+          await handleVerify(res.extracted_batch_number, res.extracted_expiry_date);
+        }
+      } catch (err: any) {
+        setErrorMessage(err.message || 'Image upload analysis failed.');
+      } finally {
+        setOcrLoading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const isPCM999888 = (verifyResult?.batch?.batch_number === 'PCM999888' || batchInput === 'PCM999888') && verifyResult?.result === 'FRAUD';
 
-  // Section 4 Event Timeline for Re-entry
   const reEntryTimelineSteps = [
     { name: 'Registered', status: 'done' },
     { name: 'Expired', status: 'done' },
@@ -118,10 +188,10 @@ export const ScanPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 uppercase tracking-wider mb-1">
-            <ScanLine className="w-3.5 h-3.5" /> AI-Assisted Risk Detection & Verification Hub
+            <ScanLine className="w-3.5 h-3.5" /> AI-Assisted Risk Detection &amp; Verification Hub
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-            <span>Scan & Verify Medicine Batch</span>
+            <span>Scan &amp; Verify Medicine Batch</span>
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             &ldquo;Track the medicine. Verify the destruction. Stop re-entry.&rdquo;
@@ -153,7 +223,12 @@ export const ScanPage: React.FC = () => {
               Quick Batch Entry
             </button>
             <button
-              onClick={() => setSelectedScanMode('ocr')}
+              onClick={() => {
+                setSelectedScanMode('ocr');
+                if (!ocrResult) {
+                  handleRunOCRScenario('tampered');
+                }
+              }}
               className={`flex-1 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                 selectedScanMode === 'ocr'
                   ? 'bg-emerald-600 text-slate-950 shadow-md'
@@ -161,7 +236,7 @@ export const ScanPage: React.FC = () => {
               }`}
             >
               <FileSearch className="w-3.5 h-3.5" />
-              OCR Label Inspection
+              📷 Image OCR + CV
             </button>
           </div>
 
@@ -256,94 +331,326 @@ export const ScanPage: React.FC = () => {
             </div>
           )}
 
-          {/* Section 6: OCR Medicine Package Image Inspection */}
+          {/* OCR + CV ANALYSIS SECTION */}
           {selectedScanMode === 'ocr' && (
-            <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 glass-panel space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Label Tampering Detection
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
-                  AI-ASSISTED OCR DEMO PRESET
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-400">
-                Preset package inspection demonstrates AI-assisted optical character recognition reconciling physical blister pack printed dates against registered manufacturer batch metadata.
-              </p>
-
-              {/* Package Simulation Options */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleRunOCR('tampered')}
-                  disabled={ocrLoading}
-                  className={`p-3.5 rounded-2xl border text-left transition-all ${
-                    ocrImagePreset === 'tampered'
-                      ? 'bg-rose-950/40 border-rose-500 text-rose-300 ring-2 ring-rose-500/30'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    Tampered Package
+            <div className="p-6 rounded-3xl bg-slate-900/70 border border-slate-800 glass-panel space-y-6">
+              {/* Step 1: Upload Medicine Image */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono">STEP 1</span>
+                    <span>📷 Upload Medicine Image</span>
                   </div>
-                  <p className="text-[10px] text-slate-300 mt-1 font-mono">
-                    Scanned: <strong className="text-rose-400">15/08/2028</strong>
-                  </p>
-                  <p className="text-[9px] text-slate-400 mt-1">(Extended by 2 years!)</p>
-                </button>
-
-                <button
-                  onClick={() => handleRunOCR('valid')}
-                  disabled={ocrLoading}
-                  className={`p-3.5 rounded-2xl border text-left transition-all ${
-                    ocrImagePreset === 'valid'
-                      ? 'bg-emerald-950/40 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/30'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                  }`}
-                >
-                  <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Legitimate Package
-                  </div>
-                  <p className="text-[10px] text-slate-300 mt-1 font-mono">
-                    Scanned: <strong>15/08/2026</strong>
-                  </p>
-                  <p className="text-[9px] text-slate-400 mt-1">(Matches registration)</p>
-                </button>
-              </div>
-
-              {/* Simulated Medicine Strip with Bounding Box Highlights */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 font-mono text-xs">
-                <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">
-                  OCR Text Extraction Preview:
+                  <span className="text-[10px] font-mono text-slate-400">
+                    AI-ASSISTED OCR + CV
+                  </span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 relative overflow-hidden">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">MEDICINE:</span>
-                    <span className="text-white font-bold">Paracetamol 500mg (Calpol)</span>
+
+                {/* Drag-and-Drop / File Upload Zone */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                      handleFileUpload(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  className="p-4 border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-2xl bg-slate-950/80 text-center cursor-pointer transition hover:bg-slate-950 group"
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileUpload(e.target.files[0]);
+                      }
+                    }}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <Upload className="w-6 h-6 text-slate-400 group-hover:text-emerald-400 mx-auto transition" />
+                  <div className="text-xs font-bold text-slate-200 mt-2">
+                    Click to browse or drag &amp; drop medicine packaging image
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">BATCH NO:</span>
-                    <span className="text-emerald-400 font-bold">B.No. PCM500123</span>
+                  <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
+                    Supports PNG, JPG, WEBP blister packs &amp; carton labels
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">MFG DATE:</span>
-                    <span className="text-slate-300">15/08/2023</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-slate-400">PRINTED EXP:</span>
-                    <span
-                      className={`font-bold px-1.5 py-0.5 rounded text-xs ${
-                        ocrImagePreset === 'tampered'
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse'
-                          : 'text-emerald-300'
+                </div>
+
+                {/* Quick Scenario Preset Pills */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                    Or Test Verified Scenarios:
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <button
+                      onClick={() => handleRunOCRScenario('match')}
+                      disabled={ocrLoading}
+                      className={`p-2.5 rounded-xl border text-left transition ${
+                        ocrScenario === 'match'
+                          ? 'bg-emerald-950/40 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/30'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                       }`}
                     >
-                      {ocrImagePreset === 'tampered' ? '15/08/2028 (ALTERED!)' : '15/08/2026'}
-                    </span>
+                      <span className="font-bold text-emerald-400 block">✓ 1. MATCH</span>
+                      <span className="text-[10px] text-slate-400">Valid Calpol Strip (2026)</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleRunOCRScenario('tampered')}
+                      disabled={ocrLoading}
+                      className={`p-2.5 rounded-xl border text-left transition ${
+                        ocrScenario === 'tampered'
+                          ? 'bg-rose-950/40 border-rose-500 text-rose-300 ring-2 ring-rose-500/30'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="font-bold text-rose-400 block">🚨 2. TAMPERING</span>
+                      <span className="text-[10px] text-slate-400">Altered Expiry (2028)</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleRunOCRScenario('reentry')}
+                      disabled={ocrLoading}
+                      className={`p-2.5 rounded-xl border text-left transition ${
+                        ocrScenario === 'reentry'
+                          ? 'bg-rose-950/40 border-rose-500 text-rose-300 ring-2 ring-rose-500/30'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="font-bold text-rose-400 block">🚨 3. RE-ENTRY</span>
+                      <span className="text-[10px] text-slate-400">Destroyed Batch PCM999888</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleRunOCRScenario('unknown')}
+                      disabled={ocrLoading}
+                      className={`p-2.5 rounded-xl border text-left transition ${
+                        ocrScenario === 'unknown'
+                          ? 'bg-amber-950/40 border-amber-500 text-amber-300 ring-2 ring-amber-500/30'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="font-bold text-amber-400 block">⚠ 4. UNKNOWN</span>
+                      <span className="text-[10px] text-slate-400">Unregistered Counterfeit</span>
+                    </button>
                   </div>
                 </div>
+              </div>
+
+              {/* Step 2: OCR + CV Analysis & Extracted Fields */}
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">STEP 2</span>
+                    <span>OCR + CV Analysis</span>
+                  </div>
+                  {ocrResult && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold">
+                      Confidence: {(ocrResult.confidence_score * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </div>
+
+                {/* Packaging Preview with Laser Scan Animation */}
+                {uploadedImagePreview && (
+                  <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 aspect-[5/3] flex items-center justify-center p-2 shadow-inner">
+                    <img
+                      src={uploadedImagePreview}
+                      alt="Medicine Packaging Scan"
+                      className="max-h-full max-w-full object-contain rounded-xl"
+                    />
+                    {ocrLoading && (
+                      <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm flex flex-col items-center justify-center space-y-3">
+                        <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
+                        <span className="text-xs font-mono font-bold text-emerald-300">
+                          Extracting Packaging Text via OCR...
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* The 5 Extracted Fields */}
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5 font-mono text-xs">
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center justify-between">
+                    <span>Extract: 5 Authoritative Attributes</span>
+                    <Eye className="w-3.5 h-3.5 text-slate-400" />
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800/80">
+                      <span className="text-slate-400 font-semibold">• Medicine name:</span>
+                      <span className="font-bold text-white text-right truncate max-w-[200px]">
+                        {ocrResult?.extracted_medicine_name || 'Paracetamol 500mg (Calpol)'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800/80">
+                      <span className="text-slate-400 font-semibold">• Batch number:</span>
+                      <span className="font-bold text-emerald-400">
+                        {ocrResult?.extracted_batch_number || 'PCM500123'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800/80">
+                      <span className="text-slate-400 font-semibold">• MFG date:</span>
+                      <span className="text-slate-300">
+                        {ocrResult?.extracted_mfg_date || '15/08/2023'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800/80">
+                      <span className="text-slate-400 font-semibold">• EXP date:</span>
+                      <span
+                        className={`font-bold px-1.5 py-0.5 rounded text-xs ${
+                          ocrResult?.is_tampered
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 animate-pulse'
+                            : 'text-emerald-300'
+                        }`}
+                      >
+                        {ocrResult?.extracted_expiry_date || '15/08/2028'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800/80">
+                      <span className="text-slate-400 font-semibold">• Manufacturer:</span>
+                      <span className="text-slate-200 text-right truncate max-w-[200px]">
+                        {ocrResult?.extracted_manufacturer || 'Sun Pharma Laboratories Ltd.'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 3: Compare with PharmaGuard Database */}
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 font-mono">STEP 3</span>
+                    <span>Compare with PharmaGuard Database</span>
+                  </div>
+                  <Database className="w-3.5 h-3.5 text-purple-400" />
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs font-mono">
+                  {(ocrResult?.comparison_table || [
+                    { field_name: 'Medicine Name', extracted_value: 'Paracetamol 500mg', database_value: 'Paracetamol 500mg', status: 'MATCH' },
+                    { field_name: 'Batch Number', extracted_value: 'PCM500123', database_value: 'PCM500123', status: 'MATCH' },
+                    { field_name: 'MFG Date', extracted_value: '15/08/2023', database_value: '15/08/2023', status: 'MATCH' },
+                    { field_name: 'EXP Date', extracted_value: '15/08/2028', database_value: '15/08/2026', status: 'MISMATCH' },
+                    { field_name: 'Manufacturer', extracted_value: 'Sun Pharma', database_value: 'Sun Pharma', status: 'MATCH' }
+                  ]).map((item, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-2 rounded-xl border flex items-center justify-between text-[11px] ${
+                        item.status === 'MATCH'
+                          ? 'bg-emerald-950/20 border-emerald-500/20 text-slate-300'
+                          : item.status === 'MISMATCH'
+                          ? 'bg-rose-950/30 border-rose-500/40 text-rose-300 font-bold'
+                          : 'bg-amber-950/30 border-amber-500/40 text-amber-300 font-bold'
+                      }`}
+                    >
+                      <span className="font-semibold text-slate-400">{item.field_name}:</span>
+                      <div className="flex items-center gap-2">
+                        <span>{item.extracted_value}</span>
+                        <span className="text-slate-500">&harr;</span>
+                        <span className={item.status === 'MATCH' ? 'text-emerald-400' : 'text-white'}>
+                          {item.database_value}
+                        </span>
+                        <span>
+                          {item.status === 'MATCH' ? '✓' : item.status === 'MISMATCH' ? '🚨' : '⚠'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 4: The Three-Way Outcome Matrix */}
+              <div className="space-y-3 pt-4 border-t border-slate-800">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  <span>Three-Way Classification Verdict:</span>
+                </div>
+
+                {/* ┌─────────┬──────────────┬─────────────┐
+                    │ MATCH   │ TAMPERING    │ UNKNOWN     │
+                    │ ✓       │ 🚨           │ ⚠           │
+                    └─────────┴──────────────┴─────────────┘ */}
+                <div className="grid grid-cols-3 gap-2 font-mono">
+                  {/* Card 1: MATCH */}
+                  <div
+                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col justify-between ${
+                      ocrResult?.verdict === 'MATCH'
+                        ? 'bg-emerald-950/60 border-2 border-emerald-400 text-emerald-200 ring-2 ring-emerald-500/40 shadow-xl'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-500 opacity-60'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-black text-sm tracking-wider">MATCH</div>
+                      <div className="text-2xl mt-1 font-black text-emerald-400">✓</div>
+                    </div>
+                    <div className="text-[9px] mt-2 pt-1 border-t border-emerald-500/30">
+                      Verified Compliant
+                    </div>
+                  </div>
+
+                  {/* Card 2: TAMPERING */}
+                  <div
+                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col justify-between ${
+                      ocrResult?.verdict === 'TAMPERING'
+                        ? 'bg-rose-950/70 border-2 border-rose-500 text-rose-100 ring-2 ring-rose-500/50 shadow-2xl animate-pulse-once'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-500 opacity-60'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-black text-sm tracking-wider text-rose-400">TAMPERING</div>
+                      <div className="text-2xl mt-1">🚨</div>
+                    </div>
+                    <div className="text-[9px] mt-2 pt-1 border-t border-rose-500/40 text-rose-300 font-bold">
+                      Label / Re-entry Fraud
+                    </div>
+                  </div>
+
+                  {/* Card 3: UNKNOWN */}
+                  <div
+                    className={`p-3 rounded-2xl border text-center transition-all flex flex-col justify-between ${
+                      ocrResult?.verdict === 'UNKNOWN'
+                        ? 'bg-amber-950/60 border-2 border-amber-400 text-amber-200 ring-2 ring-amber-500/40 shadow-xl'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-500 opacity-60'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-black text-sm tracking-wider text-amber-400">UNKNOWN</div>
+                      <div className="text-2xl mt-1 text-amber-400">⚠</div>
+                    </div>
+                    <div className="text-[9px] mt-2 pt-1 border-t border-amber-500/30 text-amber-300 font-bold">
+                      Unregistered Batch
+                    </div>
+                  </div>
+                </div>
+
+                {/* Verdict Explanatory Callout */}
+                {ocrResult && (
+                  <div
+                    className={`p-3.5 rounded-2xl border text-xs font-mono ${
+                      ocrResult.verdict === 'MATCH'
+                        ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+                        : ocrResult.verdict === 'TAMPERING'
+                        ? 'bg-rose-950/40 border-rose-500/60 text-rose-200'
+                        : 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+                    }`}
+                  >
+                    <div className="font-bold uppercase tracking-wider mb-1 flex items-center justify-between">
+                      <span>VERDICT: {ocrResult.verdict}</span>
+                      <span>Risk: {ocrResult.risk_score}/100 — {ocrResult.severity}</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed">
+                      {ocrResult.tampering_description || ocrResult.recommendation}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -368,7 +675,7 @@ export const ScanPage: React.FC = () => {
               <RefreshCw className="w-10 h-10 text-emerald-400 animate-spin mx-auto" />
               <div className="text-white font-bold text-base">Running AI-Assisted Risk Engine...</div>
               <p className="text-xs text-slate-400">
-                Checking QR cryptographic signature, batch ledger status, and anomaly scoring.
+                Cross-referencing packaging data, database ledgers, and anomaly detectors.
               </p>
             </div>
           ) : verifyResult ? (
@@ -381,7 +688,7 @@ export const ScanPage: React.FC = () => {
                   : 'bg-slate-900/60 border-emerald-500/40 shadow-xl'
               }`}
             >
-              {/* SECTION 4: Re-entry Fraud Wow Moment Header */}
+              {/* Verdict Header */}
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-800">
                 <div>
                   <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 block mb-1">
@@ -407,13 +714,13 @@ export const ScanPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Risk Score Pill (e.g. 95 / 100 CRITICAL) */}
+                {/* Risk Score Pill */}
                 <div className="flex flex-col items-end">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-3xl sm:text-4xl font-black text-rose-400 font-mono">
+                  <div className="flex items-baseline gap-1 font-mono">
+                    <span className="text-3xl sm:text-4xl font-black text-rose-400">
                       {verifyResult.risk_score}
                     </span>
-                    <span className="text-sm font-mono text-slate-400 font-bold">/ 100</span>
+                    <span className="text-sm text-slate-400 font-bold">/ 100</span>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white font-mono text-xs font-black uppercase tracking-wider mt-1">
                     {verifyResult.severity}
@@ -421,7 +728,7 @@ export const ScanPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Mandatory Callout: DO NOT ACCEPT OR DISPENSE */}
+              {/* Mandatory Directive */}
               {verifyResult.result === 'FRAUD' && (
                 <div className="p-4 rounded-2xl bg-rose-600/20 border-2 border-rose-500 text-rose-100 flex items-center justify-between shadow-2xl">
                   <div className="flex items-center gap-3">
@@ -441,7 +748,7 @@ export const ScanPage: React.FC = () => {
                 </div>
               )}
 
-              {/* SECTION 4: Re-entry Specific Batch Details */}
+              {/* PCM999888 Re-entry Details */}
               {isPCM999888 && (
                 <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3 font-mono text-xs">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -468,7 +775,7 @@ export const ScanPage: React.FC = () => {
                 </div>
               )}
 
-              {/* SECTION 5: COMPACT "WHY THIS WAS FLAGGED" EXPLANATION */}
+              {/* Compact "WHY THIS WAS FLAGGED" Explanation */}
               {verifyResult.result === 'FRAUD' && (
                 <div className="p-4 rounded-2xl bg-slate-950/90 border border-rose-500/50 space-y-3">
                   <div className="flex items-center justify-between">
@@ -505,7 +812,7 @@ export const ScanPage: React.FC = () => {
                 </div>
               )}
 
-              {/* SECTION 4: VISUAL EVENT TIMELINE FOR RE-ENTRY */}
+              {/* Visual Event Timeline for Re-entry */}
               {isPCM999888 && (
                 <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-3">
                   <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 block">
@@ -521,9 +828,7 @@ export const ScanPage: React.FC = () => {
                               : 'bg-slate-900 border border-slate-800 text-emerald-400'
                           }`}
                         >
-                          {step.status === 'done' ? (
-                            <span>✓</span>
-                          ) : null}
+                          {step.status === 'done' ? <span>✓</span> : null}
                           <span>{step.name}</span>
                         </div>
                         {idx < reEntryTimelineSteps.length - 1 && (
@@ -535,69 +840,7 @@ export const ScanPage: React.FC = () => {
                 </div>
               )}
 
-              {/* SECTION 6: VISUAL SIDE-BY-SIDE OCR COMPARISON */}
-              {selectedScanMode === 'ocr' && ocrImagePreset === 'tampered' && (
-                <div className="p-4 rounded-2xl bg-slate-950/90 border-2 border-rose-500/60 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-                      <AlertTriangle className="w-4 h-4" /> ⚠ LABEL TAMPERING DETECTED
-                    </span>
-                    <span className="text-xs font-mono text-rose-400 font-bold px-2 py-0.5 rounded bg-rose-950 border border-rose-500/40">
-                      Risk: 85/100 — CRITICAL
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Trusted Batch Record */}
-                    <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2 font-mono text-xs">
-                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                        TRUSTED BATCH RECORD
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Batch:</span>
-                          <span className="text-white font-bold">PCM500123</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Medicine:</span>
-                          <span className="text-slate-300">Paracetamol 500mg</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-1 border-t border-slate-800">
-                          <span className="text-slate-400 font-bold">Expiry:</span>
-                          <span className="text-emerald-400 font-bold text-sm">15/08/2026</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Scanned Package */}
-                    <div className="p-4 rounded-xl bg-rose-950/40 border border-rose-500/50 space-y-2 font-mono text-xs">
-                      <div className="text-[10px] text-rose-300 font-bold uppercase tracking-wider">
-                        SCANNED PACKAGE (OCR)
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Batch:</span>
-                          <span className="text-white font-bold">PCM500123</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-400">Medicine:</span>
-                          <span className="text-slate-300">Paracetamol 500mg</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-1 border-t border-rose-500/30">
-                          <span className="text-rose-300 font-bold">Detected expiry:</span>
-                          <span className="text-rose-400 font-bold text-sm animate-pulse">15/08/2028</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-[11px] text-rose-300/90 font-mono bg-rose-950/30 p-2.5 rounded-xl border border-rose-500/30">
-                    Discrepancy: Physical package date was fraudulently altered by 24 months past official registration.
-                  </div>
-                </div>
-              )}
-
-              {/* Recommendation Callout */}
+              {/* Recommendation */}
               <div
                 className={`p-4 rounded-2xl border text-sm font-semibold ${
                   verifyResult.result === 'FRAUD'
@@ -610,7 +853,7 @@ export const ScanPage: React.FC = () => {
                 {verifyResult.recommendation}
               </div>
 
-              {/* Multi-Signal Verification Checks */}
+              {/* Deterministic Verification Checks */}
               <div className="space-y-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
                   Deterministic Multi-Signal Verification Checks
@@ -631,23 +874,6 @@ export const ScanPage: React.FC = () => {
                   ))}
                 </div>
               </div>
-
-              {/* Rejection / Flag Reasons */}
-              {verifyResult.reasons && verifyResult.reasons.length > 0 && (
-                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5" /> Rule Engine Infraction Findings
-                  </span>
-                  <ul className="space-y-1 text-xs text-slate-200">
-                    {verifyResult.reasons.map((r, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="text-rose-500 font-bold">&bull;</span>
-                        <span>{r}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
 
               {/* Actions */}
               <div className="flex items-center justify-between pt-2 border-t border-slate-800">
@@ -679,7 +905,7 @@ export const ScanPage: React.FC = () => {
               <ScanLine className="w-12 h-12 text-slate-600 mx-auto" />
               <div className="text-slate-300 font-bold text-lg">Awaiting Scan Input</div>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Select PCM999888 on the left to trigger the Re-entry Fraud demonstration, or run OCR Label Inspection to detect package tampering.
+                Upload a medicine image or choose a scenario on the left to extract the 5 package attributes, compare with the database, and inspect the MATCH / TAMPERING / UNKNOWN outcome matrix.
               </p>
             </div>
           )}

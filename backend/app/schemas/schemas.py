@@ -247,10 +247,18 @@ class OCRAnalyzeResponse(BaseModel):
     extracted_medicine_name: Optional[str] = None
     extracted_manufacturer: Optional[str] = None
     registered_expiry_date: Optional[str] = None
+    registered_medicine_name: Optional[str] = None
+    registered_manufacturer: Optional[str] = None
+    batch_status_in_db: Optional[str] = None
+    verdict: str = "MATCH" # MATCH, TAMPERING, UNKNOWN
+    risk_score: int = 5
+    severity: str = "LOW"
+    recommendation: Optional[str] = None
     is_tampered: bool = False
     tampering_description: Optional[str] = None
     confidence_score: float = 0.95
     bounding_boxes: List[Dict[str, Any]] = []
+    comparison_table: List[Dict[str, Any]] = []
 
 # --- Dashboard Stats ---
 class DashboardStatsResponse(BaseModel):
