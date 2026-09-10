@@ -82,10 +82,27 @@ export const api = {
   async getReturns(status?: string): Promise<ReturnRequest[]> {
     return request(`/returns${status ? `?status=${status}` : ''}`);
   },
-  async createReturnRequest(batchId: string, quantity: number, reason: string = 'EXPIRED'): Promise<ReturnRequest> {
+  async createReturnRequest(
+    batchId: string,
+    quantity: number,
+    reason: string = 'EXPIRED',
+    retailerId?: string,
+    retailerName?: string
+  ): Promise<ReturnRequest> {
     return request('/returns', {
       method: 'POST',
-      body: JSON.stringify({ batch_id: batchId, quantity, reason })
+      body: JSON.stringify({
+        batch_id: batchId,
+        quantity,
+        reason,
+        retailer_id: retailerId,
+        retailer_name: retailerName
+      })
+    });
+  },
+  async cancelReturnRequest(returnId: string): Promise<ReturnRequest> {
+    return request(`/returns/${returnId}/cancel`, {
+      method: 'PATCH'
     });
   },
 
@@ -113,6 +130,16 @@ export const api = {
       body: JSON.stringify({ batch_id: batchId, received_quantity: receivedQuantity, notes })
     });
   },
+  async scheduleDisposal(data: {
+    batch_id: string;
+    waste_facility_name?: string;
+    notes?: string;
+  }): Promise<Batch> {
+    return request('/destruction/schedule-disposal', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
   async verifyCertificate(data: {
     batch_number: string;
     certificate_number: string;
@@ -126,6 +153,9 @@ export const api = {
       quantity: data.quantity.toString()
     });
     return request(`/destruction/verify-certificate?${query.toString()}`, { method: 'POST' });
+  },
+  async getDestructionRecords(): Promise<DestructionRecord[]> {
+    return request('/destruction');
   },
   async confirmDestruction(data: {
     batch_id: string;

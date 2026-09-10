@@ -49,28 +49,32 @@ class OCRService:
         # 1. Determine target batch number
         if override_batch_number and override_batch_number.strip():
             batch_no = override_batch_number.strip().upper()
-        elif "pcm999888" in img_name_lower or "reentry" in img_name_lower or "destroyed" in img_name_lower:
-            batch_no = "PCM999888"
+        elif "cs10-d99" in img_name_lower or "pcm999888" in img_name_lower or "reentry" in img_name_lower or "destroyed" in img_name_lower:
+            batch_no = "CS10-D99-0089"
         elif "unknown" in img_name_lower or "fake" in img_name_lower or "counterfeit" in img_name_lower:
             batch_no = "FAKE-BATCH-999"
+        elif "safe" in img_name_lower:
+            batch_no = "CS10-SAFE"
+        elif "expir" in img_name_lower:
+            batch_no = "CS10-EXP18"
         else:
             # Check if filename contains a known batch pattern
-            matched = re.search(r'(PCM\d{6}|AMX\d{6}|AZI\d{6}|MET\d{6}|PAN\d{6})', img_name_lower, re.IGNORECASE)
+            matched = re.search(r'(CS10[-\w\d]+|PCM\d{6}|AMX\d{6}|AZI\d{6}|MET\d{6}|PAN\d{6})', img_name_lower, re.IGNORECASE)
             if matched:
                 batch_no = matched.group(1).upper()
             else:
-                batch_no = "PCM500123"
+                batch_no = "CS10-A23-2507"
 
         # 2. Query Authoritative PharmaGuard Database
         batch = db.query(Batch).filter(Batch.batch_number == batch_no).first()
 
         # Scenario 1: UNKNOWN BATCH (Not in Database)
         if not batch or batch_no == "FAKE-BATCH-999" or "unknown" in img_name_lower or "fake" in img_name_lower:
-            ext_med_name = "Acetaminophen 500mg"
-            ext_batch_no = batch_no if batch_no != "PCM500123" else "FAKE-BATCH-999"
-            ext_mfg_date = "10/01/2024"
-            ext_exp_date = printed_expiry_override or "10/01/2027"
-            ext_manufacturer = "Apex Generic Laboratories (Unverified)"
+            ext_med_name = "CardioSafe 10 mg Tablets"
+            ext_batch_no = batch_no if batch_no != "CS10-A23-2507" else "FAKE-BATCH-999"
+            ext_mfg_date = "15/07/2024"
+            ext_exp_date = printed_expiry_override or "15/07/2027"
+            ext_manufacturer = "Unverified Pharma Ltd."
 
             tampering_desc = (
                 f"UNREGISTERED BATCH: Batch number '{ext_batch_no}' was not found in the "
@@ -118,10 +122,10 @@ class OCRService:
             }
 
         # Batch exists in database -> Extract DB registered fields
-        reg_med_name = batch.medicine.name if batch.medicine else "Paracetamol 500mg (Calpol)"
+        reg_med_name = batch.medicine.name if batch.medicine else "CardioSafe 10 mg Tablets"
         reg_mfg_date = batch.manufacturing_date.strftime("%d/%m/%Y")
         reg_exp_date = batch.expiry_date.strftime("%d/%m/%Y")
-        reg_mfr = batch.medicine.manufacturer if batch.medicine else "Sun Pharma Laboratories Ltd."
+        reg_mfr = batch.medicine.manufacturer if batch.medicine else "BharatCure Pharma"
         batch_status = batch.status
 
         # Extracted defaults from package
@@ -133,6 +137,7 @@ class OCRService:
         # Scenario 2A: Re-entry of Destroyed Batch (P0 Fraud)
         is_destroyed_reentry = (
             batch_status in [BatchStatus.DESTRUCTION_VERIFIED, BatchStatus.CLOSED, BatchStatus.REENTRY_DETECTED]
+            or "cs10-d99" in img_name_lower
             or "pcm999888" in img_name_lower
             or "reentry" in img_name_lower
             or "destroyed" in img_name_lower
@@ -154,7 +159,7 @@ class OCRService:
             ext_exp_date = printed_expiry_override or reg_exp_date
             tampering_desc = (
                 f"RE-ENTRY FRAUD: Batch '{ext_batch_no}' was previously certified as destroyed "
-                "at EcoSafe Bio-Medical Facility, but packaging has reappeared in the supply chain."
+                "at GreenShield Biomedical Waste Services under Certificate DC-00891, but packaging has reappeared in the supply chain."
             )
             recommendation = "DO NOT ACCEPT OR DISPENSE: Previously destroyed batch re-entry detected. Quarantine batch immediately."
 
@@ -172,7 +177,7 @@ class OCRService:
             is_tampered = True
             risk_score = 85
             severity = "CRITICAL"
-            ext_exp_date = printed_expiry_override or "15/08/2028"
+            ext_exp_date = printed_expiry_override or "15/07/2028"
             tampering_desc = (
                 f"LABEL TAMPERING: Printed expiry date '{ext_exp_date}' contradicts manufacturer-registered "
                 f"expiry date '{reg_exp_date}'. Fraudulent shelf-life extension detected."

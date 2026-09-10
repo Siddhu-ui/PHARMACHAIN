@@ -1,447 +1,763 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { Batch, DestructionRecord } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { PageHeader } from '../components/PageHeader';
+import { MetricCard } from '../components/MetricCard';
+import { StatusBadge } from '../components/StatusBadge';
+import { AlertBanner } from '../components/AlertBanner';
+import { EmptyState, LoadingState } from '../components/States';
+import { BatchDetailsDrawer } from '../components/BatchDetailsDrawer';
+import { generateCompliancePDF } from '../utils/pdfGenerator';
 import {
-  Factory, ShieldCheck, Flame, FileCheck, CheckCircle2,
-  AlertTriangle, Upload, Eye, Check, Clock, ArrowRight, MapPin
+  Factory, Building2, Flame, CheckCircle2,
+  AlertTriangle, Inbox, ArrowRight, ShieldCheck,
+  FileCheck, History, ExternalLink, Check, Download,
+  Search, Eye, ShieldAlert
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import confetti from 'canvas-confetti';
 
 export const ManufacturerPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const getActiveTab = () => {
+    const path = location.pathname;
+    if (path.includes('/returns') || path.includes('/intake')) return 'returns';
+    if (path.includes('/quarantine')) return 'quarantine';
+    if (path.includes('/disposal')) return 'disposal';
+    if (path.includes('/certificates')) return 'certificates';
+    return 'overview';
+  };
+
+  const activeTab = getActiveTab();
+
   const [batches, setBatches] = useState<Batch[]>([]);
+  const [destructionRecords, setDestructionRecords] = useState<DestructionRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Quarantine Receipt modal
-  const [receiveBatchTarget, setReceiveBatchTarget] = useState<Batch | null>(null);
-  const [receivedCount, setReceivedCount] = useState<number>(100);
+  // Quarantine Intake Modal
+  const [intakeTarget, setIntakeTarget] = useState<Batch | null>(null);
+  const [intakeQty, setIntakeQty] = useState(100);
+  const [intakeNotes, setIntakeNotes] = useState('Packaging seal verified. Transferred to Quarantine Bay 2');
+  const [submittingIntake, setSubmittingIntake] = useState(false);
 
-  // Destruction Certificate Modal
-  const [destructTarget, setDestructTarget] = useState<Batch | null>(null);
-  const [facilityName, setFacilityName] = useState('EcoSafe Bio-Medical Destruction Facility');
-  const [certNumber, setCertNumber] = useState('CERT-ECO-2026-PCM123');
-  const [destroyQty, setDestroyQty] = useState(100);
-  const [verificationResult, setVerificationResult] = useState<{ is_valid: boolean; status: string; discrepancies: string[] } | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  // Disposal Scheduling Modal
+  const [disposalTarget, setDisposalTarget] = useState<Batch | null>(null);
+  const [wasteFacility, setWasteFacility] = useState('GreenShield Biomedical Waste Services');
+  const [disposalNotes, setDisposalNotes] = useState('Authorized for high-temperature biomedical incineration under CPCB norms');
+  const [submittingDisposal, setSubmittingDisposal] = useState(false);
 
-  const loadBatches = async () => {
+  // Batch Details Drawer
+  const [selectedDrawerBatch, setSelectedDrawerBatch] = useState<Batch | null>(null);
+
+  const loadData = async () => {
     try {
-      const data = await api.getBatches();
-      setBatches(data);
-    } catch {
-      // offline
+      setLoading(true);
+      const [batchesData, records] = await Promise.all([
+        api.getBatches(),
+        api.getDestructionRecords().catch(() => []),
+      ]);
+      setBatches(batchesData || []);
+      setDestructionRecords(records || []);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load manufacturer batches.');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadBatches();
+    loadData();
   }, []);
 
-  const handleOpenReceive = (batch: Batch) => {
-    setReceiveBatchTarget(batch);
-    setReceivedCount(batch.quantity);
+  const awaitingIntakeBatches = batches.filter(
+    (b) => b.status === 'IN_TRANSIT' || b.status === 'PICKUP_CONFIRMED' || b.status === 'RETURN_REQUESTED'
+  );
+  const quarantinedBatches = batches.filter(
+    (b) => b.status === 'RECEIVED_BY_MANUFACTURER'
+  );
+  const awaitingDisposalBatches = batches.filter(
+    (b) => b.status === 'AWAITING_DESTRUCTION'
+  );
+  const destroyedBatches = batches.filter(
+    (b) => b.status === 'DESTRUCTION_VERIFIED' || b.status === 'CLOSED'
+  );
+
+  const handleOpenIntake = (batch: Batch) => {
+    setIntakeTarget(batch);
+    setIntakeQty(batch.quantity || 100);
+    setIntakeNotes('Packaging seal verified. Transferred to Quarantine Bay 2');
   };
 
-  const handleConfirmReceive = async () => {
-    if (!receiveBatchTarget) return;
-    setSubmitting(true);
+  const handleConfirmIntake = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!intakeTarget) return;
+
+    setSubmittingIntake(true);
     try {
-      await api.receiveByManufacturer(receiveBatchTarget.id, receivedCount, 'Physical quarantine inspection passed');
-      setStatusMsg(`✅ Batch ${receiveBatchTarget.batch_number} received in Quarantine Bay!`);
-      setReceiveBatchTarget(null);
-      await loadBatches();
-      setTimeout(() => setStatusMsg(null), 4000);
+      await api.receiveByManufacturer(intakeTarget.id, intakeQty, intakeNotes);
+      setSuccessMsg(`Batch ${intakeTarget.batch_number} received and secured in Quarantine Bay 2. Status updated.`);
+      setIntakeTarget(null);
+      await loadData();
     } catch (err: any) {
-      alert(`Error receiving batch: ${err.message}`);
+      setError(err?.message || 'Failed to record manufacturer intake.');
     } finally {
-      setSubmitting(false);
+      setSubmittingIntake(false);
     }
   };
 
-  const handleOpenDestruction = (batch: Batch) => {
-    setDestructTarget(batch);
-    setDestroyQty(batch.quantity);
-    setCertNumber(`CERT-ECO-2026-${batch.batch_number}`);
-    setVerificationResult(null);
+  const handleOpenDisposal = (batch: Batch) => {
+    setDisposalTarget(batch);
+    setWasteFacility('GreenShield Biomedical Waste Services');
+    setDisposalNotes('Authorized for high-temperature biomedical incineration under CPCB norms');
   };
 
-  const handleVerifyCert = async () => {
-    if (!destructTarget) return;
-    setSubmitting(true);
+  const handleConfirmDisposal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!disposalTarget) return;
+
+    setSubmittingDisposal(true);
     try {
-      const res = await api.verifyCertificate({
-        batch_number: destructTarget.batch_number,
-        certificate_number: certNumber,
-        facility_name: facilityName,
-        quantity: destroyQty
+      await api.scheduleDisposal({
+        batch_id: disposalTarget.id,
+        waste_facility_name: wasteFacility,
+        notes: disposalNotes
       });
-      setVerificationResult(res);
+      setSuccessMsg(
+        `Disposal scheduled for Batch ${disposalTarget.batch_number} at ${wasteFacility}. Consignment moved to AWAITING_DESTRUCTION.`
+      );
+      setDisposalTarget(null);
+      await loadData();
     } catch (err: any) {
-      alert(`Certificate verification failed: ${err.message}`);
+      setError(err?.message || 'Failed to schedule disposal.');
     } finally {
-      setSubmitting(false);
+      setSubmittingDisposal(false);
     }
   };
 
-  const handleFinalConfirmDestruction = async () => {
-    if (!destructTarget) return;
-    setSubmitting(true);
-    try {
-      await api.confirmDestruction({
-        batch_id: destructTarget.id,
-        waste_facility_id: 'waste_eco_01',
-        waste_facility_name: facilityName,
-        certificate_number: certNumber,
-        destroyed_quantity: destroyQty,
-        certificate_url: `/certificates/${certNumber}.pdf`
-      });
-
-      confetti({ particleCount: 70, spread: 70, origin: { y: 0.7 } });
-      setStatusMsg(`🔥 Batch ${destructTarget.batch_number} verified destroyed! Status updated to DESTRUCTION_VERIFIED.`);
-      setDestructTarget(null);
-      await loadBatches();
-      setTimeout(() => setStatusMsg(null), 5000);
-    } catch (err: any) {
-      alert(`Destruction confirmation error: ${err.message}`);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const returnsInTransit = batches.filter(b => b.status === 'PICKUP_CONFIRMED' || b.status === 'IN_TRANSIT');
-  const inQuarantine = batches.filter(b => b.status === 'RECEIVED_BY_MANUFACTURER');
-  const destroyedBatches = batches.filter(b => b.status === 'DESTRUCTION_VERIFIED');
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-6">
+        <PageHeader title="Manufacturer Central QA Portal" subtitle="BharatCure Pharma" />
+        <LoadingState message="Loading manufacturer quarantine bay and batch logs..." />
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 pb-32">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="max-w-6xl mx-auto space-y-6">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-navy-200">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-indigo-400 uppercase tracking-wider mb-1">
-            <Factory className="w-3.5 h-3.5" /> {currentUser?.organization || 'Sun Pharma Laboratories Ltd. - QA Division'}
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-navy-900 tracking-tight">
+              {currentUser?.organization || 'BharatCure Pharma'}
+            </h1>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-clinical-50 text-clinical-800 border border-clinical-200 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-clinical-600" />
+              Central QA & Quarantine Unit
+            </span>
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">
-            Manufacturer QA & Authorized Destruction
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Quarantine incoming reverse batches, verify authorized bio-medical waste certificates, and seal destruction ledgers.
+          <p className="text-xs text-navy-500 mt-0.5">
+            QA Director: {currentUser?.name || 'Rajan'} • Formulation Facility: Vadodara Plant, Gujarat
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          <Link
-            to="/manufacturer/register"
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20"
-          >
-            <span>Register Medicine</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-          <Link
-            to="/manufacturer/products"
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 font-bold text-xs transition"
-          >
-            <span>Registered Products</span>
-          </Link>
-        </div>
+        <button
+          onClick={loadData}
+          className="px-3.5 py-1.5 rounded-lg border border-navy-200 bg-white hover:bg-navy-50 text-navy-800 text-xs font-semibold shadow-xs transition"
+        >
+          Refresh Ledger
+        </button>
       </div>
 
-      {statusMsg && (
-        <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/50 text-emerald-300 text-sm flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 shrink-0" />
-          <span>{statusMsg}</span>
-        </div>
+      {/* View Switcher Tabs */}
+      <div className="flex items-center gap-1 border-b border-navy-200 overflow-x-auto pb-px text-xs font-semibold">
+        <button
+          onClick={() => navigate('/manufacturer')}
+          className={`px-4 py-2 border-b-2 transition whitespace-nowrap ${
+            activeTab === 'overview'
+              ? 'border-clinical-600 text-clinical-700 font-bold'
+              : 'border-transparent text-navy-500 hover:text-navy-800'
+          }`}
+        >
+          QA Overview
+        </button>
+        <button
+          onClick={() => navigate('/manufacturer/returns')}
+          className={`px-4 py-2 border-b-2 transition whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'returns'
+              ? 'border-clinical-600 text-clinical-700 font-bold'
+              : 'border-transparent text-navy-500 hover:text-navy-800'
+          }`}
+        >
+          <span>Awaiting Intake</span>
+          <span className="px-1.5 py-0.2 rounded-full bg-navy-100 text-navy-700 text-[10px] font-bold">
+            {awaitingIntakeBatches.length}
+          </span>
+        </button>
+        <button
+          onClick={() => navigate('/manufacturer/quarantine')}
+          className={`px-4 py-2 border-b-2 transition whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'quarantine'
+              ? 'border-clinical-600 text-clinical-700 font-bold'
+              : 'border-transparent text-navy-500 hover:text-navy-800'
+          }`}
+        >
+          <span>Quarantine Bay</span>
+          <span className="px-1.5 py-0.2 rounded-full bg-navy-100 text-navy-700 text-[10px] font-bold">
+            {quarantinedBatches.length}
+          </span>
+        </button>
+        <button
+          onClick={() => navigate('/manufacturer/disposal')}
+          className={`px-4 py-2 border-b-2 transition whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === 'disposal'
+              ? 'border-clinical-600 text-clinical-700 font-bold'
+              : 'border-transparent text-navy-500 hover:text-navy-800'
+          }`}
+        >
+          <span>Disposal Queue</span>
+          <span className="px-1.5 py-0.2 rounded-full bg-navy-100 text-navy-700 text-[10px] font-bold">
+            {awaitingDisposalBatches.length}
+          </span>
+        </button>
+        <button
+          onClick={() => navigate('/manufacturer/certificates')}
+          className={`px-4 py-2 border-b-2 transition whitespace-nowrap ${
+            activeTab === 'certificates'
+              ? 'border-clinical-600 text-clinical-700 font-bold'
+              : 'border-transparent text-navy-500 hover:text-navy-800'
+          }`}
+        >
+          Destruction Certificates
+        </button>
+      </div>
+
+      {successMsg && (
+        <AlertBanner
+          type="success"
+          title="Manufacturer Ledger Updated"
+          message={successMsg}
+          onClose={() => setSuccessMsg(null)}
+        />
       )}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-blue-950/20 border border-blue-500/30">
-          <div className="flex items-center justify-between text-xs text-blue-400 font-bold uppercase tracking-wider">
-            <span>Inbound From Distributors</span>
-            <Clock className="w-4 h-4" />
+      {error && (
+        <AlertBanner
+          type="critical"
+          title="Notice"
+          message={error}
+          onClose={() => setError(null)}
+        />
+      )}
+
+      {/* ----------------- TAB: OVERVIEW ----------------- */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              label="Awaiting Inbound Intake"
+              value={awaitingIntakeBatches.length}
+              icon={<Inbox className="w-4 h-4 text-warning-600" />}
+              color="warning"
+              subtitle="From MedLink Logistics fleet"
+            />
+
+            <MetricCard
+              label="Quarantined Stock"
+              value={quarantinedBatches.length}
+              icon={<Building2 className="w-4 h-4 text-clinical-600" />}
+              color="clinical"
+              subtitle="Secured in Quarantine Bay 2"
+            />
+
+            <MetricCard
+              label="Awaiting Destruction"
+              value={awaitingDisposalBatches.length}
+              icon={<Flame className="w-4 h-4 text-warning-600" />}
+              color="warning"
+              subtitle="Dispatched to GreenShield"
+            />
+
+            <MetricCard
+              label="Destruction Verified"
+              value={destroyedBatches.length}
+              icon={<CheckCircle2 className="w-4 h-4 text-success-600" />}
+              color="success"
+              subtitle="Closed reverse lifecycle"
+            />
           </div>
-          <div className="text-3xl font-extrabold text-white mt-2 font-mono">{returnsInTransit.length}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Awaiting physical intake</p>
-        </div>
 
-        <div className="p-5 rounded-2xl bg-indigo-950/20 border border-indigo-500/30">
-          <div className="flex items-center justify-between text-xs text-indigo-400 font-bold uppercase tracking-wider">
-            <span>In Quarantine Bay</span>
-            <Factory className="w-4 h-4" />
-          </div>
-          <div className="text-3xl font-extrabold text-white mt-2 font-mono">{inQuarantine.length}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Ready for authorized destruction</p>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-slate-900 border border-slate-700">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-bold uppercase tracking-wider">
-            <span>Verified Destroyed</span>
-            <Flame className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-3xl font-extrabold text-white mt-2 font-mono">{destroyedBatches.length}</div>
-          <p className="text-[11px] text-slate-400 mt-1">Certified sealed ledgers</p>
-        </div>
-      </div>
-
-      {/* Inbound Returns Awaiting Receipt */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden glass-panel">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-blue-400" />
-            Inbound Returns Awaiting QA Receipt ({returnsInTransit.length})
-          </h2>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-950/80 text-slate-400 font-mono uppercase tracking-wider border-b border-slate-800">
-              <tr>
-                <th className="px-6 py-3">Batch No</th>
-                <th className="px-6 py-3">Medicine</th>
-                <th className="px-6 py-3">Current Location</th>
-                <th className="px-6 py-3">Quantity</th>
-                <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800 text-slate-300">
-              {returnsInTransit.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                    No inbound shipments pending intake. Complete distributor pickup first.
-                  </td>
-                </tr>
-              ) : (
-                returnsInTransit.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-800/40 transition">
-                    <td className="px-6 py-4 font-mono font-bold text-emerald-400">{b.batch_number}</td>
-                    <td className="px-6 py-4 font-semibold text-white">{b.medicine?.name || 'Paracetamol 500mg'}</td>
-                    <td className="px-6 py-4 text-slate-300">{b.current_location}</td>
-                    <td className="px-6 py-4 font-mono">{b.quantity} {b.unit}</td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                        {b.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleOpenReceive(b)}
-                        className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition"
-                      >
-                        Confirm QA Receipt
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Quarantine Bay & Destruction Scheduler */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden glass-panel">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-            <Flame className="w-4 h-4 text-amber-400" />
-            Quarantine Bay — Pending Bio-Medical Waste Destruction ({inQuarantine.length})
-          </h2>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-950/80 text-slate-400 font-mono uppercase tracking-wider border-b border-slate-800">
-              <tr>
-                <th className="px-6 py-3">Batch No</th>
-                <th className="px-6 py-3">Medicine</th>
-                <th className="px-6 py-3">Bay Location</th>
-                <th className="px-6 py-3">Quarantine Qty</th>
-                <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800 text-slate-300">
-              {inQuarantine.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                    No batches currently residing in quarantine bay.
-                  </td>
-                </tr>
-              ) : (
-                inQuarantine.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-800/40 transition">
-                    <td className="px-6 py-4 font-mono font-bold text-emerald-400">{b.batch_number}</td>
-                    <td className="px-6 py-4 font-semibold text-white">{b.medicine?.name || 'Paracetamol 500mg'}</td>
-                    <td className="px-6 py-4 text-slate-300">{b.current_location}</td>
-                    <td className="px-6 py-4 font-mono">{b.quantity} {b.unit}</td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">
-                        {b.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => handleOpenDestruction(b)}
-                        className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs shadow-md transition"
-                      >
-                        Upload & Verify Destruction Cert
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Quarantine Receive Modal */}
-      {receiveBatchTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-2xl">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <Factory className="w-5 h-5 text-indigo-400" />
-              Confirm Quarantine Intake
-            </h3>
-            <div className="p-3 bg-slate-950 rounded-xl text-xs space-y-1 font-mono text-slate-300">
-              <div><span className="text-slate-500">Batch:</span> {receiveBatchTarget.batch_number}</div>
-              <div><span className="text-slate-500">Medicine:</span> {receiveBatchTarget.medicine?.name}</div>
+          {/* Quick Action Tables */}
+          <div className="bg-white border border-navy-200 rounded-xl p-5 shadow-xs">
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-navy-100">
+              <div>
+                <h3 className="text-sm font-bold text-navy-900">Quarantine Bay Active Batches</h3>
+                <p className="text-xs text-navy-500">Secured expired consignments awaiting authorized biomedical disposal scheduling</p>
+              </div>
+              <button
+                onClick={() => navigate('/manufacturer/quarantine')}
+                className="text-xs font-semibold text-clinical-700 hover:underline inline-flex items-center gap-1"
+              >
+                <span>View Quarantine Bay</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Received Unit Count</label>
-              <input
-                type="number"
-                value={receivedCount}
-                onChange={(e) => setReceivedCount(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono text-sm"
+
+            {quarantinedBatches.length === 0 ? (
+              <EmptyState
+                title="Quarantine bay is empty"
+                message="No batches are currently held in manufacturer quarantine."
               />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setReceiveBatchTarget(null)}
-                className="px-4 py-2 text-xs text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmReceive}
-                disabled={submitting}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition"
-              >
-                {submitting ? 'Logging...' : 'Confirm Quarantine Bay Receipt'}
-              </button>
-            </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-navy-100 text-navy-500 font-semibold uppercase tracking-wider text-[10px]">
+                      <th className="pb-2.5">Batch Number</th>
+                      <th className="pb-2.5">Medicine Product</th>
+                      <th className="pb-2.5">Quantity</th>
+                      <th className="pb-2.5">Location</th>
+                      <th className="pb-2.5">Status</th>
+                      <th className="pb-2.5 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-navy-100">
+                    {quarantinedBatches.map((b) => (
+                      <tr key={b.id} className="hover:bg-navy-50/50 transition">
+                        <td className="py-3 font-mono font-bold text-navy-900">{b.batch_number}</td>
+                        <td className="py-3 font-semibold text-navy-800">{b.medicine?.name || 'CardioSafe 10 mg Tablets'}</td>
+                        <td className="py-3 font-mono font-semibold text-navy-900">{b.quantity} strips</td>
+                        <td className="py-3 text-navy-600">{b.current_location}</td>
+                        <td className="py-3"><StatusBadge label={b.status} size="sm" /></td>
+                        <td className="py-3 text-right">
+                          <button
+                            onClick={() => handleOpenDisposal(b)}
+                            className="px-3 py-1.5 rounded-lg bg-clinical-600 hover:bg-clinical-700 text-white font-bold text-xs shadow-2xs transition inline-flex items-center gap-1"
+                          >
+                            <Flame className="w-3.5 h-3.5" />
+                            <span>Schedule Disposal</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Destruction Modal */}
-      {destructTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Flame className="w-5 h-5 text-amber-400" />
-                Destruction Certificate Reconciliation
-              </h3>
+      {/* ----------------- TAB: AWAITING INTAKE ----------------- */}
+      {activeTab === 'returns' && (
+        <div className="bg-white border border-navy-200 rounded-xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-navy-100">
+            <div>
+              <h3 className="text-sm font-bold text-navy-900">Inbound Reverse Logistics Intake</h3>
+              <p className="text-xs text-navy-500">Batches in transit from MedLink Logistics awaiting receipt verification into Quarantine Bay</p>
             </div>
+            <span className="text-xs font-semibold text-navy-500">{awaitingIntakeBatches.length} Consignments En Route</span>
+          </div>
 
-            <div className="p-3 bg-slate-950 rounded-xl text-xs space-y-1 font-mono text-slate-300">
-              <div><span className="text-slate-500">Target Batch:</span> {destructTarget.batch_number}</div>
-              <div><span className="text-slate-500">Expected Destruction Qty:</span> {destructTarget.quantity} Strips</div>
+          {awaitingIntakeBatches.length === 0 ? (
+            <EmptyState
+              title="No batches awaiting intake"
+              message="All inbound reverse chain consignments have been inspected and secured."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-navy-100 text-navy-500 font-semibold uppercase tracking-wider text-[10px]">
+                    <th className="pb-2.5">Batch Number</th>
+                    <th className="pb-2.5">Product</th>
+                    <th className="pb-2.5">Quantity</th>
+                    <th className="pb-2.5">Transit Hub</th>
+                    <th className="pb-2.5">Status</th>
+                    <th className="pb-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-navy-100">
+                  {awaitingIntakeBatches.map((b) => (
+                    <tr key={b.id} className="hover:bg-navy-50/50 transition">
+                      <td className="py-3 font-mono font-bold text-navy-900">{b.batch_number}</td>
+                      <td className="py-3 font-semibold text-navy-800">{b.medicine?.name || 'CardioSafe 10 mg Tablets'}</td>
+                      <td className="py-3 font-mono font-semibold text-navy-900">{b.quantity} strips</td>
+                      <td className="py-3 text-navy-600">{b.current_location}</td>
+                      <td className="py-3"><StatusBadge label={b.status} size="sm" /></td>
+                      <td className="py-3 text-right space-x-2">
+                        <button
+                          onClick={() => setSelectedDrawerBatch(b)}
+                          className="px-2.5 py-1 rounded border border-navy-200 text-navy-700 font-semibold text-[11px]"
+                        >
+                          Details
+                        </button>
+                        <button
+                          onClick={() => handleOpenIntake(b)}
+                          className="px-3 py-1.5 rounded-lg bg-clinical-600 hover:bg-clinical-700 text-white font-bold text-xs shadow-2xs transition inline-flex items-center gap-1"
+                        >
+                          <Inbox className="w-3.5 h-3.5" />
+                          <span>Receive into Quarantine</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          )}
+        </div>
+      )}
 
-            <div className="space-y-3 text-xs">
+      {/* ----------------- TAB: QUARANTINE BAY ----------------- */}
+      {activeTab === 'quarantine' && (
+        <div className="bg-white border border-navy-200 rounded-xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-navy-100">
+            <div>
+              <h3 className="text-sm font-bold text-navy-900">Quarantine Bay 2 Inventory</h3>
+              <p className="text-xs text-navy-500">Expired pharmaceutical stock held securely under manufacturer QA oversight</p>
+            </div>
+          </div>
+
+          {quarantinedBatches.length === 0 ? (
+            <EmptyState
+              title="Quarantine bay is empty"
+              message="No expired batches are currently held in physical quarantine."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-navy-100 text-navy-500 font-semibold uppercase tracking-wider text-[10px]">
+                    <th className="pb-2.5">Batch Number</th>
+                    <th className="pb-2.5">Product</th>
+                    <th className="pb-2.5">Quarantined Qty</th>
+                    <th className="pb-2.5">Bay Location</th>
+                    <th className="pb-2.5">Status</th>
+                    <th className="pb-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-navy-100">
+                  {quarantinedBatches.map((b) => (
+                    <tr key={b.id} className="hover:bg-navy-50/50 transition">
+                      <td className="py-3 font-mono font-bold text-navy-900">{b.batch_number}</td>
+                      <td className="py-3 font-semibold text-navy-800">{b.medicine?.name || 'CardioSafe 10 mg Tablets'}</td>
+                      <td className="py-3 font-mono font-semibold text-navy-900">{b.quantity} strips</td>
+                      <td className="py-3 text-navy-600">{b.current_location}</td>
+                      <td className="py-3"><StatusBadge label={b.status} size="sm" /></td>
+                      <td className="py-3 text-right space-x-2">
+                        <button
+                          onClick={() => setSelectedDrawerBatch(b)}
+                          className="px-2.5 py-1 rounded border border-navy-200 text-navy-700 font-semibold text-[11px]"
+                        >
+                          Details
+                        </button>
+                        <button
+                          onClick={() => handleOpenDisposal(b)}
+                          className="px-3 py-1.5 rounded-lg bg-clinical-600 hover:bg-clinical-700 text-white font-bold text-xs shadow-2xs transition inline-flex items-center gap-1"
+                        >
+                          <Flame className="w-3.5 h-3.5" />
+                          <span>Schedule Disposal</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ----------------- TAB: DISPOSAL QUEUE ----------------- */}
+      {activeTab === 'disposal' && (
+        <div className="bg-white border border-navy-200 rounded-xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-navy-100">
+            <div>
+              <h3 className="text-sm font-bold text-navy-900">Authorized Biomedical Disposal Consignments</h3>
+              <p className="text-xs text-navy-500">Batches dispatched to GreenShield Biomedical Waste Services for high-temp incineration</p>
+            </div>
+          </div>
+
+          {awaitingDisposalBatches.length === 0 ? (
+            <EmptyState
+              title="No consignments in disposal queue"
+              message="All scheduled disposal batches have been incinerated and certified."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-navy-100 text-navy-500 font-semibold uppercase tracking-wider text-[10px]">
+                    <th className="pb-2.5">Batch Number</th>
+                    <th className="pb-2.5">Product</th>
+                    <th className="pb-2.5">Dispatched Quantity</th>
+                    <th className="pb-2.5">Authorized Facility</th>
+                    <th className="pb-2.5">Status</th>
+                    <th className="pb-2.5 text-right">Audit Trail</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-navy-100">
+                  {awaitingDisposalBatches.map((b) => (
+                    <tr key={b.id} className="hover:bg-navy-50/50 transition">
+                      <td className="py-3 font-mono font-bold text-navy-900">{b.batch_number}</td>
+                      <td className="py-3 font-semibold text-navy-800">{b.medicine?.name || 'CardioSafe 10 mg Tablets'}</td>
+                      <td className="py-3 font-mono font-semibold text-navy-900">{b.quantity} strips</td>
+                      <td className="py-3 text-navy-700">GreenShield Biomedical Waste Services</td>
+                      <td className="py-3"><StatusBadge label={b.status} size="sm" /></td>
+                      <td className="py-3 text-right">
+                        <Link
+                          to={`/batches/${b.batch_number}`}
+                          className="px-3 py-1 rounded bg-clinical-50 text-clinical-700 border border-clinical-200 font-semibold text-[11px]"
+                        >
+                          View Ledger
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ----------------- TAB: CERTIFICATES ----------------- */}
+      {activeTab === 'certificates' && (
+        <div className="bg-white border border-navy-200 rounded-xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-navy-100">
+            <div>
+              <h3 className="text-sm font-bold text-navy-900">Biomedical Destruction Certificates</h3>
+              <p className="text-xs text-navy-500">Official certificates issued by authorized waste disposal facilities</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-navy-100 text-navy-500 font-semibold uppercase tracking-wider text-[10px]">
+                  <th className="pb-2.5">Certificate Number</th>
+                  <th className="pb-2.5">Batch</th>
+                  <th className="pb-2.5">Medicine Product</th>
+                  <th className="pb-2.5">Destroyed Quantity</th>
+                  <th className="pb-2.5">Facility Name</th>
+                  <th className="pb-2.5">Status</th>
+                  <th className="pb-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-navy-100">
+                <tr className="hover:bg-navy-50/50 transition">
+                  <td className="py-3 font-mono font-bold text-navy-800 flex items-center gap-1.5">
+                    <FileCheck className="w-4 h-4 text-success-600" />
+                    <span>DC-00891</span>
+                  </td>
+                  <td className="py-3 font-mono text-navy-700">CS10-A23-2507</td>
+                  <td className="py-3 font-semibold text-navy-900">CardioSafe 10 mg Tablets</td>
+                  <td className="py-3 font-mono font-semibold text-navy-900">100 strips</td>
+                  <td className="py-3 text-navy-700">GreenShield Biomedical Waste Services</td>
+                  <td className="py-3"><StatusBadge label="DESTRUCTION_VERIFIED" size="sm" /></td>
+                  <td className="py-3 text-right space-x-2">
+                    <button
+                      onClick={() =>
+                        generateCompliancePDF({
+                          id: 'DC-00891',
+                          type: 'DESTRUCTION_CERTIFICATE',
+                          title: 'Biomedical Waste Destruction Certificate',
+                          serialNumber: 'DC-00891',
+                          batchNumber: 'CS10-A23-2507',
+                          medicineName: 'CardioSafe 10 mg Tablets',
+                          issuer: 'GreenShield Biomedical Waste Services',
+                          recipient: 'BharatCure Pharma QA',
+                          quantity: 100,
+                          date: '2026-07-12',
+                          status: 'VERIFIED'
+                        })
+                      }
+                      className="px-2.5 py-1 rounded bg-clinical-600 hover:bg-clinical-700 text-white font-semibold text-[11px] shadow-2xs transition inline-flex items-center gap-1"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Download PDF</span>
+                    </button>
+                    <Link
+                      to="/batches/CS10-A23-2507"
+                      className="text-clinical-700 hover:underline font-semibold text-[11px]"
+                    >
+                      Audit
+                    </Link>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Reusable Batch Details Drawer */}
+      <BatchDetailsDrawer
+        batch={selectedDrawerBatch}
+        onClose={() => setSelectedDrawerBatch(null)}
+      />
+
+      {/* Quarantine Intake Modal */}
+      {intakeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl border border-navy-200 shadow-2xl max-w-md w-full p-6 animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-navy-100 mb-4">
               <div>
-                <label className="block text-slate-400 mb-1">Certificate Serial Number</label>
-                <input
-                  type="text"
-                  value={certNumber}
-                  onChange={(e) => setCertNumber(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono"
-                />
+                <h3 className="text-sm font-bold text-navy-900">Manufacturer Intake & Quarantine</h3>
+                <p className="text-xs text-navy-500">Verify returned consignment into Quarantine Bay</p>
+              </div>
+              <button
+                onClick={() => setIntakeTarget(null)}
+                className="text-navy-400 hover:text-navy-700 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmIntake} className="space-y-4 text-xs">
+              <div className="p-3 bg-navy-50 rounded-lg border border-navy-200 space-y-1">
+                <span className="text-navy-500 text-[11px] font-semibold uppercase block">Inbound Batch</span>
+                <span className="font-bold text-navy-900 block text-sm">
+                  {intakeTarget.medicine?.name || 'CardioSafe 10 mg Tablets'}
+                </span>
+                <span className="font-mono text-navy-700 text-xs block">
+                  Batch: {intakeTarget.batch_number} • Current Location: {intakeTarget.current_location}
+                </span>
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Authorized Waste Facility</label>
-                <input
-                  type="text"
-                  value={facilityName}
-                  onChange={(e) => setFacilityName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 mb-1">Certified Destroyed Quantity</label>
+                <label className="block text-navy-700 font-semibold mb-1">
+                  Received Counted Quantity (Strips)
+                </label>
                 <input
                   type="number"
-                  value={destroyQty}
-                  onChange={(e) => setDestroyQty(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono"
+                  min="1"
+                  value={intakeQty}
+                  onChange={(e) => setIntakeQty(parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 rounded-lg border border-navy-200 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-clinical-500"
+                  required
                 />
               </div>
 
-              {verificationResult && (
-                <div
-                  className={`p-3.5 rounded-2xl border text-xs space-y-1 ${
-                    verificationResult.is_valid
-                      ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
-                      : 'bg-rose-950/40 border-rose-500/50 text-rose-300'
-                  }`}
-                >
-                  <div className="font-bold flex items-center gap-1.5">
-                    {verificationResult.is_valid ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        CERTIFICATE VALIDATED & MATCHED
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="w-4 h-4 text-rose-400" />
-                        CERTIFICATE DISCREPANCIES DETECTED
-                      </>
-                    )}
-                  </div>
-                  {verificationResult.discrepancies.map((d, i) => (
-                    <p key={i}>&bull; {d}</p>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
-              <button
-                onClick={() => setDestructTarget(null)}
-                className="px-4 py-2 text-xs text-slate-400 hover:text-white"
-              >
-                Cancel
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleVerifyCert}
-                  disabled={submitting}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition border border-slate-700"
-                >
-                  Verify Certificate
-                </button>
-
-                {verificationResult?.is_valid && (
-                  <button
-                    onClick={handleFinalConfirmDestruction}
-                    disabled={submitting}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20"
-                  >
-                    Confirm Destruction (Seal Ledger)
-                  </button>
-                )}
+              <div>
+                <label className="block text-navy-700 font-semibold mb-1">
+                  QA Quarantine Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={intakeNotes}
+                  onChange={(e) => setIntakeNotes(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-navy-200 text-xs focus:outline-none focus:ring-1 focus:ring-clinical-500"
+                />
               </div>
+
+              <div className="pt-3 border-t border-navy-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIntakeTarget(null)}
+                  className="px-3.5 py-2 rounded-lg border border-navy-200 text-navy-700 hover:bg-navy-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingIntake}
+                  className="px-4 py-2 rounded-lg bg-clinical-600 hover:bg-clinical-700 text-white font-bold text-xs shadow-xs disabled:opacity-50"
+                >
+                  {submittingIntake ? 'Verifying Intake...' : 'CONFIRM INTAKE TO QUARANTINE'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Disposal Scheduling Modal */}
+      {disposalTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-xl border border-navy-200 shadow-2xl max-w-md w-full p-6 animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-navy-100 mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-navy-900">Schedule Authorized Biomedical Destruction</h3>
+                <p className="text-xs text-navy-500">Transfer consignment custody to authorized waste incinerator</p>
+              </div>
+              <button
+                onClick={() => setDisposalTarget(null)}
+                className="text-navy-400 hover:text-navy-700 text-sm font-bold"
+              >
+                ✕
+              </button>
             </div>
+
+            <form onSubmit={handleConfirmDisposal} className="space-y-4 text-xs">
+              <div className="p-3 bg-navy-50 rounded-lg border border-navy-200 space-y-1">
+                <span className="text-navy-500 text-[11px] font-semibold uppercase block">Selected Quarantine Batch</span>
+                <span className="font-bold text-navy-900 block text-sm">
+                  {disposalTarget.medicine?.name || 'CardioSafe 10 mg Tablets'}
+                </span>
+                <span className="font-mono text-navy-700 text-xs block">
+                  Batch: {disposalTarget.batch_number} • Quantity: {disposalTarget.quantity} strips
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-navy-700 font-semibold mb-1">
+                  CPCB / SPCB Authorized Waste Facility
+                </label>
+                <select
+                  value={wasteFacility}
+                  onChange={(e) => setWasteFacility(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-navy-200 text-xs focus:outline-none focus:ring-1 focus:ring-clinical-500"
+                >
+                  <option value="GreenShield Biomedical Waste Services">
+                    GreenShield Biomedical Waste Services (Hosur Pyrolysis Complex)
+                  </option>
+                  <option value="EcoSafe Hazardous Management Ltd.">
+                    EcoSafe Hazardous Management Ltd. (Vadodara)
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-navy-700 font-semibold mb-1">
+                  Compliance Directives & Instructions
+                </label>
+                <textarea
+                  rows={2}
+                  value={disposalNotes}
+                  onChange={(e) => setDisposalNotes(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-navy-200 text-xs focus:outline-none focus:ring-1 focus:ring-clinical-500"
+                />
+              </div>
+
+              <div className="p-3 bg-warning-50 rounded-lg border border-warning-200 text-warning-900 text-xs">
+                <strong>Statutory Notice:</strong> Once dispatched, the consignment transitions to <code>AWAITING_DESTRUCTION</code>. GreenShield will issue Certificate <code>DC-00891</code> upon complete incineration.
+              </div>
+
+              <div className="pt-3 border-t border-navy-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDisposalTarget(null)}
+                  className="px-3.5 py-2 rounded-lg border border-navy-200 text-navy-700 hover:bg-navy-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingDisposal}
+                  className="px-4 py-2 rounded-lg bg-clinical-600 hover:bg-clinical-700 text-white font-bold text-xs shadow-xs disabled:opacity-50"
+                >
+                  {submittingDisposal ? 'Dispatching Manifest...' : 'DISPATCH TO GREENSHIELD'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

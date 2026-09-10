@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { Batch, BatchEvent } from '../types';
-import { BatchTimeline } from '../components/BatchTimeline';
-import { RiskScoreBadge } from '../components/RiskScoreBadge';
+import { LifecycleTimeline } from '../components/LifecycleTimeline';
+import { StatusBadge } from '../components/StatusBadge';
+import { QRCodeCard } from '../components/QRCodeCard';
+import { LoadingState, EmptyState } from '../components/States';
 import {
   Package, Calendar, Factory, MapPin, ArrowLeft,
-  ShieldCheck, ShieldAlert, QrCode, FileText, ExternalLink
+  ShieldCheck, ShieldAlert, Layers, Building2, ExternalLink
 } from 'lucide-react';
 
 export const BatchDetailPage: React.FC = () => {
@@ -26,7 +28,7 @@ export const BatchDetailPage: React.FC = () => {
         setBatch(batchData);
         setTimeline(timelineData);
       } catch (err) {
-        // handle error
+        // handle offline fallback
       } finally {
         setLoading(false);
       }
@@ -36,149 +38,137 @@ export const BatchDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center text-slate-400">
-        Loading cryptographic batch ledger...
+      <div className="max-w-5xl mx-auto py-12">
+        <LoadingState message="Retrieving immutable batch compliance ledger..." />
       </div>
     );
   }
 
   if (!batch) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center space-y-4">
-        <h2 className="text-xl font-bold text-white">Batch Not Found</h2>
-        <p className="text-xs text-slate-400">Could not locate batch record for identifier: {id}</p>
-        <Link to="/dashboard" className="inline-block px-4 py-2 rounded-xl bg-emerald-600 text-slate-950 font-bold text-xs">
-          Return to Command Center
-        </Link>
+      <div className="max-w-md mx-auto py-16 text-center">
+        <EmptyState
+          title="Batch Ledger Not Found"
+          message={`Could not locate authoritative compliance record for batch '${id}'.`}
+          action={{
+            label: 'Return to Dashboard',
+            onClick: () => window.history.back(),
+          }}
+        />
       </div>
     );
   }
 
-  const isFraud = batch.status === 'REENTRY_DETECTED' || batch.status === 'SUSPICIOUS';
-  const isDestroyed = batch.status === 'DESTRUCTION_VERIFIED';
+  const isCritical = batch.status === 'REENTRY_DETECTED' || batch.status === 'SUSPICIOUS' || batch.status === 'EXPIRED';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 pb-32">
+    <div className="max-w-5xl mx-auto space-y-6">
       {/* Back Link */}
-      <Link
-        to="/dashboard"
-        className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-emerald-400 transition"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" /> Back to Dashboard
-      </Link>
+      <div>
+        <button
+          onClick={() => window.history.back()}
+          className="inline-flex items-center gap-1.5 text-xs text-navy-600 hover:text-navy-900 font-medium transition"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back</span>
+        </button>
+      </div>
 
       {/* Main Header Card */}
-      <div
-        className={`p-6 sm:p-8 rounded-3xl border glass-panel transition ${
-          isFraud
-            ? 'bg-rose-950/20 border-rose-500/50'
-            : isDestroyed
-            ? 'bg-slate-900/60 border-slate-700'
-            : 'bg-slate-900/60 border-slate-800'
-        }`}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4 pb-6 border-b border-slate-800">
+      <div className="bg-white border border-navy-200 rounded-xl p-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 mb-5 border-b border-navy-100">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
-                BATCH LEDGER RECORD
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-clinical-700 bg-clinical-50 border border-clinical-200 px-2 py-0.5 rounded">
+                Authoritative Batch Ledger
               </span>
-              <span
-                className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-full uppercase ${
-                  isFraud
-                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                    : isDestroyed
-                    ? 'bg-slate-500/20 text-slate-400 border border-slate-500/40'
-                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                }`}
-              >
-                {batch.status}
-              </span>
+              <StatusBadge label={batch.status} size="sm" />
             </div>
-            <h1 className="text-3xl font-extrabold text-white mt-2 font-mono tracking-tight">
+            <h1 className="text-2xl font-bold font-mono text-navy-900 tracking-tight">
               {batch.batch_number}
             </h1>
-            <p className="text-sm text-slate-300 font-semibold mt-1">
-              {batch.medicine?.name} &bull; {batch.medicine?.dosage} ({batch.medicine?.form})
+            <p className="text-sm font-semibold text-navy-800 mt-0.5">
+              {batch.medicine?.name || 'CardioSafe 10 mg Tablets'}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Link
-              to="/scan"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition shadow-md"
-            >
-              <QrCode className="w-4 h-4" /> Verify In Scanner
-            </Link>
+          <div className="text-right">
+            <span className="text-[11px] text-navy-400 block font-mono">Product Identifier</span>
+            <span className="text-xs font-mono font-bold text-navy-900">
+              {batch.product_id || `PG-${batch.batch_number}`}
+            </span>
           </div>
         </div>
 
-        {/* Metadata Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 text-xs font-mono">
-          <div>
-            <span className="text-slate-500 block">Manufacturer</span>
-            <span className="text-slate-200 font-bold">{batch.medicine?.manufacturer}</span>
+        {/* 4 Attributes Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+          <div className="p-3 bg-navy-50/50 rounded-lg border border-navy-100">
+            <span className="text-navy-500 block text-[11px] mb-1">Manufacturer</span>
+            <span className="font-bold text-navy-900 block truncate">
+              {batch.manufacturer_name || batch.medicine?.manufacturer || 'BharatCure Pharma'}
+            </span>
           </div>
-          <div>
-            <span className="text-slate-500 block">Current Location</span>
-            <span className="text-slate-200 font-bold truncate block">{batch.current_location}</span>
-          </div>
-          <div>
-            <span className="text-slate-500 block">Manufacturing Date</span>
-            <span className="text-slate-200">
+
+          <div className="p-3 bg-navy-50/50 rounded-lg border border-navy-100">
+            <span className="text-navy-500 block text-[11px] mb-1">Manufacturing Date</span>
+            <span className="font-bold text-navy-900 font-mono block">
               {new Date(batch.manufacturing_date).toLocaleDateString('en-IN')}
             </span>
           </div>
-          <div>
-            <span className="text-slate-500 block">Authoritative Expiry</span>
-            <span className="text-slate-200 font-bold">
+
+          <div className="p-3 bg-navy-50/50 rounded-lg border border-navy-100">
+            <span className="text-navy-500 block text-[11px] mb-1">Expiry Date</span>
+            <span className="font-bold text-navy-900 font-mono block">
               {new Date(batch.expiry_date).toLocaleDateString('en-IN')}
             </span>
           </div>
+
+          <div className="p-3 bg-navy-50/50 rounded-lg border border-navy-100">
+            <span className="text-navy-500 block text-[11px] mb-1">Stock Quantity</span>
+            <span className="font-bold text-navy-900 block font-mono">
+              {batch.quantity} {batch.unit || 'STRIPS'}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-navy-100 flex items-center justify-between text-xs text-navy-600">
+          <div className="flex items-center gap-1.5 truncate">
+            <MapPin className="w-3.5 h-3.5 text-navy-400 shrink-0" />
+            <span>Current Custody: <strong className="text-navy-900">{batch.current_location}</strong></span>
+          </div>
+          <span className="font-mono text-[11px] text-navy-400">
+            Node: Verified
+          </span>
         </div>
       </div>
 
-      {/* Two Column Layout: Event Ledger & QR Details */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Chain of Custody Timeline (8 cols) */}
-        <div className="lg:col-span-8 space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              Immutable Chain-of-Custody Event Ledger ({timeline.length} Events)
-            </h2>
-            <span className="text-xs text-slate-500 font-mono">SHA-256 VALIDATED</span>
-          </div>
-
-          <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 glass-panel">
-            <BatchTimeline events={timeline} />
-          </div>
+      {/* Two Column Layout: Timeline and QR Code */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left 2 Cols: Immutable Lifecycle Timeline */}
+        <div className="lg:col-span-2">
+          <LifecycleTimeline
+            events={timeline}
+            batchNumber={batch.batch_number}
+            status={batch.status}
+          />
         </div>
 
-        {/* Right Info: QR Data Card (4 cols) */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="p-6 rounded-3xl bg-slate-900/60 border border-slate-800 glass-panel space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Cryptographic QR Payload
-              </span>
-              <QrCode className="w-4 h-4 text-emerald-400" />
-            </div>
+        {/* Right 1 Col: QR Card and Verification Seal */}
+        <div className="space-y-4">
+          <QRCodeCard
+            productId={batch.product_id || batch.batch_number}
+            medicineName={batch.medicine?.name || 'CardioSafe 10 mg Tablets'}
+            batchId={batch.batch_number}
+          />
 
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 font-mono text-[11px] text-emerald-400 space-y-2">
-              <div><span className="text-slate-500">batch_number:</span> "{batch.batch_number}"</div>
-              <div><span className="text-slate-500">medicine:</span> "{batch.medicine?.name}"</div>
-              <div><span className="text-slate-500">manufacturer:</span> "{batch.medicine?.manufacturer}"</div>
-              <div><span className="text-slate-500">registered_expiry:</span> "{new Date(batch.expiry_date).toISOString().slice(0, 10)}"</div>
-              <div><span className="text-slate-500">ledger_records:</span> {timeline.length}</div>
+          <div className="p-4 bg-white rounded-xl border border-navy-200 shadow-xs text-xs space-y-2">
+            <div className="flex items-center gap-1.5 font-bold text-navy-900">
+              <ShieldCheck className="w-4 h-4 text-clinical-600" />
+              <span>Compliance Seal</span>
             </div>
-
-            <div className="text-xs text-slate-400 space-y-2">
-              <span className="font-bold text-slate-300 block">Ledger Immutability Guarantee</span>
-              <p className="text-[11px] leading-relaxed">
-                Every physical handoff, weight recording, and destruction verification creates an unmodifiable transaction log.
-              </p>
-            </div>
+            <p className="text-navy-600 text-[11px] leading-relaxed">
+              Every reverse-chain handover is recorded with cryptographic timestamps, actor credentials, and location telemetry.
+            </p>
           </div>
         </div>
       </div>

@@ -104,6 +104,14 @@ class ReturnRequestCreate(BaseModel):
     batch_id: str
     quantity: int
     reason: str = "EXPIRED"
+    retailer_id: Optional[str] = None
+    retailer_name: Optional[str] = None
+
+class ScheduleDisposalRequest(BaseModel):
+    batch_id: str
+    waste_facility_name: Optional[str] = "GreenShield Biomedical Waste Services"
+    notes: Optional[str] = None
+
 
 class ReturnRequestResponse(BaseModel):
     id: str

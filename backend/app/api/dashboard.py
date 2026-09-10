@@ -73,7 +73,7 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 
     # Risk Distribution
     risk_distribution = [
-        {"severity": "LOW", "count": db.query(FraudIncident).filter(FraudIncident.severity == "LOW").count() + 12},
+        {"severity": "LOW", "count": db.query(FraudIncident).filter(FraudIncident.severity == "LOW").count()},
         {"severity": "MEDIUM", "count": db.query(FraudIncident).filter(FraudIncident.severity == "MEDIUM").count()},
         {"severity": "HIGH", "count": db.query(FraudIncident).filter(FraudIncident.severity == "HIGH").count()},
         {"severity": "CRITICAL", "count": critical_incidents}

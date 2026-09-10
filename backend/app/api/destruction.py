@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.models.models import Batch, DestructionRecord, Organization
 from app.schemas.schemas import (
     ManufacturerReceiptCreate, DestructionCreate, DestructionResponse,
-    CertificateVerificationResult, BatchResponse
+    CertificateVerificationResult, BatchResponse, ScheduleDisposalRequest
 )
 from app.core.state_machine import BatchStateMachine, BatchStatus
 from app.services.ledger_service import LedgerService
@@ -18,8 +18,8 @@ router = APIRouter(prefix="/destruction", tags=["Destruction & Manufacturer Rece
 @router.post("/receive", response_model=BatchResponse)
 def receive_by_manufacturer(
     request: ManufacturerReceiptCreate,
-    manufacturer_name: Optional[str] = "Sun Pharma Laboratories Ltd. - Central QA",
-    location: Optional[str] = "Vadodara Quarantine Bay 4, Gujarat",
+    manufacturer_name: Optional[str] = "BharatCure Pharma QA",
+    location: Optional[str] = "Vadodara Quarantine Bay 2, Gujarat",
     db: Session = Depends(get_db)
 ):
     batch = db.query(Batch).filter((Batch.id == request.batch_id) | (Batch.batch_number == request.batch_id)).first()
@@ -50,6 +50,45 @@ def receive_by_manufacturer(
 
     return batch
 
+@router.post("/schedule-disposal", response_model=BatchResponse)
+def schedule_disposal(
+    request: ScheduleDisposalRequest,
+    manufacturer_name: Optional[str] = "BharatCure Pharma QA",
+    db: Session = Depends(get_db)
+):
+    batch = db.query(Batch).filter((Batch.id == request.batch_id) | (Batch.batch_number == request.batch_id)).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    try:
+        BatchStateMachine.validate_transition(batch.status, BatchStatus.AWAITING_DESTRUCTION)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    facility = request.waste_facility_name or "GreenShield Biomedical Waste Services"
+    batch.status = BatchStatus.AWAITING_DESTRUCTION
+    batch.current_location = f"{facility} - Incinerator Manifest Queue"
+    batch.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(batch)
+
+    LedgerService.record_event(
+        db=db,
+        batch_id=batch.id,
+        event_type="DISPOSAL_SCHEDULED",
+        actor_name=manufacturer_name,
+        organization_name=manufacturer_name,
+        location=facility,
+        quantity=batch.quantity,
+        metadata={"waste_facility": facility, "notes": request.notes or "Scheduled for high-temperature biomedical incineration"}
+    )
+
+    return batch
+
+@router.get("", response_model=List[DestructionResponse])
+def get_destruction_records(db: Session = Depends(get_db)):
+    return db.query(DestructionRecord).order_by(DestructionRecord.destruction_date.desc()).all()
+
 @router.post("/verify-certificate", response_model=CertificateVerificationResult)
 def verify_certificate(
     batch_number: str,
@@ -69,7 +108,7 @@ def verify_certificate(
         is_valid = False
         discrepancies.append(f"Quantity mismatch: Certificate states {quantity}, registered batch has {batch.quantity}.")
 
-    authorized_facility = "EcoSafe" in facility_name or "Authorized" in facility_name
+    authorized_facility = "GreenShield" in facility_name or "EcoSafe" in facility_name or "Authorized" in facility_name
     if not authorized_facility:
         is_valid = False
         discrepancies.append(f"Facility '{facility_name}' is not an authorized state pollution control board certified facility.")
