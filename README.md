@@ -1,6 +1,6 @@
 # PHARMAGUARD
 
-> **AI-assisted pharmaceutical reverse-chain compliance and fraud detection platform.**
+> **AI-Assisted pharmaceutical reverse-chain compliance and fraud detection platform.**
 
 PharmaGuard provides closed-loop reverse logistics tracking for pharmaceuticals across all handoff stages (**Pharmacy Retailer → Logistics Distributor → Manufacturer Quarantine → State-Authorized Waste Facility → Verified Destruction**). It enforces deterministic statutory compliance, uses computer vision OCR for package label tampering inspection, and applies Isolation Forest machine learning to flag behavioral supply chain anomalies.
 
