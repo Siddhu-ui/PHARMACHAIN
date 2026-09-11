@@ -1,4 +1,4 @@
-# PHARMAGUARD
+# PHARMAFLOW
 
 > **AI-assisted pharmaceutical reverse-chain compliance and fraud detection platform.**
 
