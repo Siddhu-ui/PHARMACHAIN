@@ -273,3 +273,5 @@ export interface RetailerVerifyResponse {
   incident_id?: string;
   recommendation: string;
 }
+
+export type { CanonicalMedicineRecord, MedicineVerificationResult } from '../utils/medicineRegistry';

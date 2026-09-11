@@ -10,6 +10,7 @@ import { AlertBanner } from '../components/AlertBanner';
 import { LoadingState } from '../components/States';
 import { Card } from '../components/Card';
 import { ScanLine, ArrowLeft, Plus, CheckCircle2 } from 'lucide-react';
+import { parseQRPayload } from '../utils/medicineRegistry';
 
 export const ScanPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -61,8 +62,9 @@ export const ScanPage: React.FC = () => {
     setCreatedReturn(null);
 
     try {
-      // Find batch or verify scan
-      const batchNo = code.includes('CS10') ? 'CS10-A23-2507' : code;
+      // Find batch or verify scan using parsed QR structure
+      const { parsed } = parseQRPayload(code);
+      const batchNo = parsed?.batch_number || (code.includes('CS10') ? 'CS10-A23-2507' : code);
       const verifyRes = await api.verifyScan({
         batch_number: batchNo,
         scan_type: 'QR',
@@ -77,7 +79,7 @@ export const ScanPage: React.FC = () => {
 
       setOcrResult(ocrRes);
       setBatch(verifyRes.batch || null);
-      setImageName(`QR Scan: ${code}`);
+      setImageName(parsed?.product_name ? `QR Scan: ${parsed.product_name} (${batchNo})` : `QR Scan: ${code}`);
     } catch (err: any) {
       setError(err?.message || 'QR code verification failed.');
     } finally {

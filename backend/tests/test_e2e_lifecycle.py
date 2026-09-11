@@ -33,10 +33,10 @@ def test_e2e_complete_story(client):
     assert prod["batch_id"] == "PCM-BATCH-TEST"
     assert prod["medicine"] == "Paracetamol 500mg"
     assert prod["product_id"].startswith("PG-PCM-2026-")
-    assert prod["qr_payload"] == prod["product_id"]
-    # Check that metadata is NOT in QR payload
-    assert "Paracetamol" not in prod["qr_payload"]
-    assert "15/08/2026" not in prod["qr_payload"]
+    # Check that complete metadata and MFG and EXP dates are in QR payload
+    assert "Paracetamol" in prod["qr_payload"]
+    assert "2026-08-15" in prod["qr_payload"]
+    assert "2024-08-15" in prod["qr_payload"]
 
     product_id = prod["product_id"]
 
@@ -48,7 +48,8 @@ def test_e2e_complete_story(client):
 
     res_qr = client.get(f"/api/products/{product_id}/qr")
     assert res_qr.status_code == 200
-    assert res_qr.json()["qr_payload"] == product_id
+    assert res_qr.json()["product_id"] == product_id
+    assert "Paracetamol" in res_qr.json()["qr_payload"]
 
     # Step 3: Retailer Package Verification — Case A: Valid Package
     verify_valid = {

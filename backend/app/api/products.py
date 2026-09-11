@@ -2,7 +2,7 @@ import re
 import json
 import random
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Any, Dict
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -45,6 +45,31 @@ def generate_deterministic_product_id(med_name: str, expiry_date: datetime, exis
     seq = f"{(existing_count + 123):06d}"
     return f"PG-{code}-{year}-{seq}"
 
+def make_canonical_qr(
+    prod_id: str,
+    prod_name: str,
+    batch_no: str,
+    mfr: str,
+    mfg_date: Any,
+    exp_date: Any,
+    qty: int = 100,
+    pack: str = "10 x 10 Tablets"
+) -> str:
+    mfg_str = mfg_date.strftime("%Y-%m-%d") if isinstance(mfg_date, datetime) else (str(mfg_date).split('T')[0] if mfg_date else "2025-07-15")
+    exp_str = exp_date.strftime("%Y-%m-%d") if isinstance(exp_date, datetime) else (str(exp_date).split('T')[0] if exp_date else "2026-07-15")
+    return json.dumps({
+        "schema_version": "1.0",
+        "product_id": prod_id,
+        "product_name": prod_name,
+        "manufacturer": mfr,
+        "batch_number": batch_no,
+        "serial_number": prod_id,
+        "manufacturing_date": mfg_str,
+        "expiry_date": exp_str,
+        "quantity": qty,
+        "pack_size": pack
+    }, separators=(',', ':'))
+
 def batch_to_product_response(b: Batch) -> ProductResponse:
     # Deterministic product ID fallback if not stored
     pid = b.product_id
@@ -61,11 +86,23 @@ def batch_to_product_response(b: Batch) -> ProductResponse:
             code = b.batch_number[:3]
             pid = f"PG-{code}-{exp_year}-{abs(hash(b.batch_number)) % 1000000:06d}"
 
-    qr = b.qr_payload or pid
     med_name = b.medicine.name if b.medicine else "Paracetamol 500mg"
     dosage = b.dosage_strength or (b.medicine.dosage if b.medicine else "500mg")
     mfr = b.manufacturer_name or (b.medicine.manufacturer if b.medicine else "Sun Pharma Laboratories Ltd.")
     ret = b.assigned_retailer_name or (b.current_location if "Pharmacy" in b.current_location else "Pharmacy A")
+
+    qr = b.qr_payload
+    if not qr or not qr.strip().startswith('{'):
+        qr = make_canonical_qr(
+            prod_id=pid,
+            prod_name=med_name,
+            batch_no=b.batch_number,
+            mfr=mfr,
+            mfg_date=b.manufacturing_date,
+            exp_date=b.expiry_date,
+            qty=b.quantity or 100,
+            pack=f"{b.quantity or 100} strips"
+        )
 
     return ProductResponse(
         id=b.id,
@@ -105,14 +142,22 @@ def register_product(request: ProductRegisterRequest, db: Session = Depends(get_
         db.commit()
         db.refresh(medicine)
 
-    # 3. Generate Product ID & QR Payload (strictly product ID)
+    # 3. Generate Product ID & Complete QR Payload with MFG & EXP dates
     batch_count = db.query(Batch).count()
     product_id = request.product_id
     if not product_id or not product_id.strip():
         product_id = generate_deterministic_product_id(request.medicine_name, request.expiry_date, batch_count)
 
-    # QR payload contains ONLY the Product ID (no metadata)
-    qr_payload = product_id
+    qr_payload = make_canonical_qr(
+        prod_id=product_id,
+        prod_name=request.medicine_name,
+        batch_no=request.batch_id,
+        mfr=request.manufacturer,
+        mfg_date=request.manufacturing_date,
+        exp_date=request.expiry_date,
+        qty=request.quantity or 100,
+        pack=f"{request.quantity or 100} strips"
+    )
 
     # 4. Determine initial status & location
     status = BatchStatus.ASSIGNED_TO_RETAILER if request.assigned_retailer else BatchStatus.ACTIVE
@@ -279,11 +324,54 @@ def verify_retailer_package(request: RetailerVerifyRequest, db: Session = Depend
         )
 
     target_id = request.product_id.strip()
+    if target_id.startswith('{') and target_id.endswith('}'):
+        try:
+            parsed_json = json.loads(target_id)
+            target_id = parsed_json.get("product_id") or parsed_json.get("batch_number") or target_id
+            if not request.batch_ocr and parsed_json.get("batch_number"):
+                request.batch_ocr = parsed_json.get("batch_number")
+            if not request.medicine_name_ocr and parsed_json.get("product_name"):
+                request.medicine_name_ocr = parsed_json.get("product_name")
+            if not request.expiry_ocr and parsed_json.get("expiry_date"):
+                request.expiry_ocr = parsed_json.get("expiry_date")
+            if not request.manufacturer_ocr and parsed_json.get("manufacturer"):
+                request.manufacturer_ocr = parsed_json.get("manufacturer")
+        except Exception:
+            pass
 
     # Step 2: Database Lookup in Trusted Manufacturer Ledger
     batch = db.query(Batch).filter(
         (Batch.product_id == target_id) | (Batch.batch_number == target_id) | (Batch.id == target_id)
     ).first()
+
+    # Check for Batch Mismatch against Registered Product
+    if batch and request.batch_ocr and request.batch_ocr.strip():
+        if request.batch_ocr.strip().upper() != batch.batch_number.upper():
+            return RetailerVerifyResponse(
+                status_verdict="BATCH_MISMATCH",
+                title="⚠ VERIFICATION FAILED",
+                product_id=batch.product_id or target_id,
+                medicine_name=batch.medicine.name if batch.medicine else request.medicine_name_ocr,
+                batch_number=request.batch_ocr,
+                registered_expiry=batch.expiry_date.strftime("%d/%m/%Y"),
+                detected_expiry=request.expiry_ocr or request.printed_expiry_override or batch.expiry_date.strftime("%d/%m/%Y"),
+                manufacturer=batch.manufacturer_name or (batch.medicine.manufacturer if batch.medicine else "BharatCure Pharma"),
+                assigned_retailer=batch.assigned_retailer_name or batch.current_location,
+                lifecycle_status=batch.status,
+                message="Batch information does not match the registered product.",
+                risk_score=75,
+                severity="HIGH",
+                checks={
+                    "qr_detected": True,
+                    "db_lookup": True,
+                    "ocr_match": False,
+                    "lifecycle_valid": False
+                },
+                comparison=[
+                    {"field": "Batch Number", "detected": request.batch_ocr, "registered": batch.batch_number, "match": False}
+                ],
+                recommendation="DO NOT ACCEPT OR DISPENSE: Batch information does not match the registered product."
+            )
 
     # Case C: Unknown Product (Not Found in Database)
     if not batch:

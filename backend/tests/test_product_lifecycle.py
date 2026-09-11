@@ -56,12 +56,13 @@ def test_manufacturer_product_registration(db_session):
     assert product.batch_id == "PCM-BATCH-001"
     assert product.medicine == "Paracetamol 500mg"
     assert product.assigned_retailer == "Pharmacy A"
-    assert product.qr_payload == product.product_id
     assert product.product_id.startswith("PG-PCM-2026-")
 
-    # Verify strictly product_id in QR payload (no metadata in QR)
-    assert "Paracetamol" not in product.qr_payload
-    assert "15/08/2026" not in product.qr_payload
+    # Verify complete QR payload containing MFG and EXP dates and metadata
+    assert "Paracetamol" in product.qr_payload
+    assert "2026-08-15" in product.qr_payload
+    assert "2024-08-15" in product.qr_payload
+    assert "PCM-BATCH-001" in product.qr_payload
 
     # Check database record
     db_batch = db_session.query(Batch).filter(Batch.batch_number == "PCM-BATCH-001").first()

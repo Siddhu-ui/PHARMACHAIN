@@ -218,6 +218,11 @@ export const RegisterProductPage: React.FC = () => {
                 productId={registeredProduct.product_id}
                 medicineName={registeredProduct.medicine}
                 batchId={registeredProduct.batch_id}
+                manufacturer={registeredProduct.manufacturer}
+                mfgDate={registeredProduct.manufacturing_date}
+                expDate={registeredProduct.expiry_date}
+                quantity={registeredProduct.quantity}
+                qrPayload={registeredProduct.qr_payload}
                 size={180}
               />
             </div>

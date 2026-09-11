@@ -64,7 +64,7 @@ class Batch(Base):
     original_retailer_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     current_location = Column(String(255), nullable=False)
     product_id = Column(String(100), unique=True, nullable=True, index=True)
-    qr_payload = Column(String(255), nullable=True)
+    qr_payload = Column(Text, nullable=True)
     assigned_retailer_name = Column(String(255), nullable=True)
     dosage_strength = Column(String(100), nullable=True)
     manufacturer_name = Column(String(255), nullable=True)
