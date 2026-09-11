@@ -326,6 +326,7 @@ class ProductAssignRetailerRequest(BaseModel):
 
 class RetailerVerifyRequest(BaseModel):
     product_id: Optional[str] = None
+    qr_data: Optional[str] = None
     qr_detected: bool = True
     package_image_url: Optional[str] = None
     printed_expiry_override: Optional[str] = None
@@ -342,6 +343,13 @@ class RetailerVerifyResponse(BaseModel):
     product_id: Optional[str] = None
     medicine_name: Optional[str] = None
     batch_number: Optional[str] = None
+    serial_number: Optional[str] = None
+    manufacturing_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    quantity: Optional[str] = None
+    current_expiry_status: Optional[str] = None
+    days_remaining: Optional[int] = None
+    is_expired: Optional[bool] = False
     registered_expiry: Optional[str] = None
     detected_expiry: Optional[str] = None
     manufacturer: Optional[str] = None

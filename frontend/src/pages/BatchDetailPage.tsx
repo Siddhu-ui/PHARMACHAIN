@@ -159,6 +159,11 @@ export const BatchDetailPage: React.FC = () => {
             productId={batch.product_id || batch.batch_number}
             medicineName={batch.medicine?.name || 'CardioSafe 10 mg Tablets'}
             batchId={batch.batch_number}
+            manufacturer={batch.manufacturer_name || batch.medicine?.manufacturer || 'BharatCure Pharma'}
+            manufacturingDate={batch.manufacturing_date}
+            expiryDate={batch.expiry_date}
+            quantity={`${batch.quantity} ${batch.unit || 'STRIPS'}`}
+            qrPayload={batch.qr_payload}
           />
 
           <div className="p-4 bg-white rounded-xl border border-navy-200 shadow-xs text-xs space-y-2">

@@ -181,14 +181,14 @@ export const RegisterProductPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Security Banner */}
-              <div className="p-4 rounded-xl bg-blue-950/20 border border-blue-500/30 text-xs text-blue-200 space-y-1">
-                <div className="flex items-center gap-2 font-bold text-blue-300">
+              {/* Verification Banner */}
+              <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs text-emerald-200 space-y-1">
+                <div className="flex items-center gap-2 font-bold text-emerald-300">
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Tamper-Resistant Identifier Principle</span>
+                  <span>Authoritative 2D Compliance QR Encoded</span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  The generated QR contains <strong>ONLY</strong> the unique Product ID ({registeredProduct.product_id}). Medicine attributes remain securely stored in the trusted manufacturer database.
+                  The generated QR contains complete verified medicine metadata including Product Name, Manufacturer, Batch, Serial, MFG Date, and EXP Date.
                 </p>
               </div>
 
@@ -218,6 +218,11 @@ export const RegisterProductPage: React.FC = () => {
                 productId={registeredProduct.product_id}
                 medicineName={registeredProduct.medicine}
                 batchId={registeredProduct.batch_id}
+                manufacturer={registeredProduct.manufacturer}
+                manufacturingDate={registeredProduct.manufacturing_date}
+                expiryDate={registeredProduct.expiry_date}
+                quantity={registeredProduct.quantity}
+                qrPayload={registeredProduct.qr_payload}
                 size={180}
               />
             </div>

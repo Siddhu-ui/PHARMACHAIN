@@ -155,16 +155,29 @@ def seed_database(db: Session = None):
 
         now = datetime.utcnow()
 
+        def make_qr_payload(product_name: str, manufacturer: str, batch_number: str, serial_number: str, mfg_date: datetime, exp_date: datetime, quantity: int, unit: str = "strips") -> str:
+            return json.dumps({
+                "product_name": product_name,
+                "manufacturer": manufacturer,
+                "batch_number": batch_number,
+                "serial_number": serial_number,
+                "manufacturing_date": mfg_date.strftime("%Y-%m-%d"),
+                "expiry_date": exp_date.strftime("%Y-%m-%d"),
+                "quantity": f"{quantity} {unit.lower()}"
+            })
+
         # 4. Canonical Batches
         # Primary Demo Batch: CS10-A23-2507 (Expired, initiates return)
+        mfg_cs10 = datetime(2025, 7, 15)
+        exp_cs10 = datetime(2026, 7, 15)
         batch_cs10 = Batch(
             batch_number="CS10-A23-2507",
             product_id="PG-CS10-2026-A232507",
-            qr_payload="PG-CS10-2026-A232507",
+            qr_payload=make_qr_payload("CardioSafe 10 mg Tablets", "BharatCure Pharma", "CS10-A23-2507", "PG-CS10-2026-A232507", mfg_cs10, exp_cs10, 100, "STRIPS"),
             medicine_id=med_cardio.id,
             manufacturer_id=org_manufacturer.id,
-            manufacturing_date=datetime(2025, 7, 15),
-            expiry_date=datetime(2026, 7, 15), # Expired on 15 Jul 2026
+            manufacturing_date=mfg_cs10,
+            expiry_date=exp_cs10, # Expired on 15 Jul 2026
             quantity=100,
             unit="STRIPS",
             status=BatchStatus.EXPIRED,
@@ -176,14 +189,16 @@ def seed_database(db: Session = None):
         )
 
         # Batch Safe: CS10-SAFE (Valid shelf life: expires in ~142 days)
+        mfg_safe = now - timedelta(days=200)
+        exp_safe = now + timedelta(days=142)
         batch_safe = Batch(
             batch_number="CS10-SAFE",
             product_id="PG-CS10-2027-009841",
-            qr_payload="PG-CS10-2027-009841",
+            qr_payload=make_qr_payload("CardioSafe 10 mg Tablets", "BharatCure Pharma", "CS10-SAFE", "PG-CS10-2027-009841", mfg_safe, exp_safe, 150, "STRIPS"),
             medicine_id=med_cardio.id,
             manufacturer_id=org_manufacturer.id,
-            manufacturing_date=now - timedelta(days=200),
-            expiry_date=now + timedelta(days=142), # Expires in 142 days
+            manufacturing_date=mfg_safe,
+            expiry_date=exp_safe, # Expires in 142 days
             quantity=150,
             unit="STRIPS",
             status=BatchStatus.ACTIVE,
@@ -195,14 +210,16 @@ def seed_database(db: Session = None):
         )
 
         # Batch Expiring Soon: CS10-EXP18 (Expires in 18 days)
+        mfg_expiring = now - timedelta(days=340)
+        exp_expiring = now + timedelta(days=18)
         batch_expiring = Batch(
             batch_number="CS10-EXP18",
             product_id="PG-CS10-2026-004412",
-            qr_payload="PG-CS10-2026-004412",
+            qr_payload=make_qr_payload("CardioSafe 10 mg Tablets", "BharatCure Pharma", "CS10-EXP18", "PG-CS10-2026-004412", mfg_expiring, exp_expiring, 80, "STRIPS"),
             medicine_id=med_cardio.id,
             manufacturer_id=org_manufacturer.id,
-            manufacturing_date=now - timedelta(days=340),
-            expiry_date=now + timedelta(days=18), # Expires in 18 days
+            manufacturing_date=mfg_expiring,
+            expiry_date=exp_expiring, # Expires in 18 days
             quantity=80,
             unit="STRIPS",
             status=BatchStatus.EXPIRING_SOON,
@@ -213,34 +230,38 @@ def seed_database(db: Session = None):
             current_location="Shree Medicals, Bengaluru"
         )
 
-        # Batch In Transit: CS10-B14-9921
+        # Batch In Transit: CS10-B14-9921 (GlycoNorm 500 mg Tablets example)
+        mfg_transit = datetime(2025, 8, 6)
+        exp_transit = datetime(2026, 8, 29)
         batch_transit = Batch(
             batch_number="CS10-B14-9921",
             product_id="PG-CS10-2026-003319",
-            qr_payload="PG-CS10-2026-003319",
+            qr_payload=make_qr_payload("GlycoNorm 500 mg Tablets", "BharatCure Pharma", "CS10-B14-9921", "PG-CS10-2026-003319", mfg_transit, exp_transit, 100, "STRIPS"),
             medicine_id=med_glyco.id,
             manufacturer_id=org_manufacturer.id,
-            manufacturing_date=now - timedelta(days=400),
-            expiry_date=now - timedelta(days=12),
+            manufacturing_date=mfg_transit,
+            expiry_date=exp_transit,
             quantity=100,
             unit="STRIPS",
-            status=BatchStatus.IN_TRANSIT,
+            status=BatchStatus.ASSIGNED_TO_RETAILER,
             original_retailer_id=org_retailer.id,
             assigned_retailer_name="Shree Medicals",
             dosage_strength="500mg",
             manufacturer_name="BharatCure Pharma",
-            current_location="In Transit - MedLink Fleet Van KA-04-E-8821"
+            current_location="Shree Medicals, Bengaluru"
         )
 
         # Batch in Quarantine: CS10-C32-8812
+        mfg_quar = now - timedelta(days=500)
+        exp_quar = now - timedelta(days=20)
         batch_quarantine = Batch(
             batch_number="CS10-C32-8812",
             product_id="PG-CS10-2026-007721",
-            qr_payload="PG-CS10-2026-007721",
+            qr_payload=make_qr_payload("RespiClear 250 mg Capsules", "BharatCure Pharma", "CS10-C32-8812", "PG-CS10-2026-007721", mfg_quar, exp_quar, 100, "STRIPS"),
             medicine_id=med_respi.id,
             manufacturer_id=org_manufacturer.id,
-            manufacturing_date=now - timedelta(days=500),
-            expiry_date=now - timedelta(days=20),
+            manufacturing_date=mfg_quar,
+            expiry_date=exp_quar,
             quantity=100,
             unit="STRIPS",
             status=BatchStatus.RECEIVED_BY_MANUFACTURER,
@@ -252,14 +273,16 @@ def seed_database(db: Session = None):
         )
 
         # Batch Destroyed (For Re-Entry Fraud Demo): CS10-D99-0089 and PCM999888 alias
+        mfg_dest = datetime(2024, 6, 10)
+        exp_dest = datetime(2026, 6, 10)
         batch_destroyed = Batch(
             batch_number="CS10-D99-0089",
             product_id="PG-CS10-2026-009988",
-            qr_payload="PG-CS10-2026-009988",
+            qr_payload=make_qr_payload("CardioSafe 10 mg Tablets", "BharatCure Pharma", "CS10-D99-0089", "PG-CS10-2026-009988", mfg_dest, exp_dest, 100, "STRIPS"),
             medicine_id=med_cardio.id,
             manufacturer_id=org_manufacturer.id,
-            manufacturing_date=datetime(2024, 6, 10),
-            expiry_date=datetime(2026, 6, 10),
+            manufacturing_date=mfg_dest,
+            expiry_date=exp_dest,
             quantity=100,
             unit="STRIPS",
             status=BatchStatus.DESTRUCTION_VERIFIED,
@@ -271,14 +294,16 @@ def seed_database(db: Session = None):
         )
 
         # Backward compatibility alias for PCM500123
+        mfg_pcm = datetime(2023, 8, 15)
+        exp_pcm = datetime(2026, 8, 15)
         batch_pcm = Batch(
             batch_number="PCM500123",
             product_id="PG-PCM-2026-500123",
-            qr_payload="PG-PCM-2026-500123",
+            qr_payload=make_qr_payload("Paracetamol 500mg Tablets", "BharatCure Pharma", "PCM500123", "PG-PCM-2026-500123", mfg_pcm, exp_pcm, 100, "STRIPS"),
             medicine_id=med_pcm.id,
             manufacturer_id=org_manufacturer.id,
-            manufacturing_date=datetime(2023, 8, 15),
-            expiry_date=datetime(2026, 8, 15),
+            manufacturing_date=mfg_pcm,
+            expiry_date=exp_pcm,
             quantity=100,
             unit="STRIPS",
             status=BatchStatus.EXPIRED,
@@ -290,14 +315,16 @@ def seed_database(db: Session = None):
         )
 
         # Backward compatibility alias for PCM999888
+        mfg_pcm_dest = now - timedelta(days=900)
+        exp_pcm_dest = now - timedelta(days=180)
         batch_pcm_dest = Batch(
             batch_number="PCM999888",
             product_id="PG-PCM-2026-999888",
-            qr_payload="PG-PCM-2026-999888",
+            qr_payload=make_qr_payload("Paracetamol 500mg Tablets", "BharatCure Pharma", "PCM999888", "PG-PCM-2026-999888", mfg_pcm_dest, exp_pcm_dest, 100, "STRIPS"),
             medicine_id=med_pcm.id,
             manufacturer_id=org_manufacturer.id,
-            manufacturing_date=now - timedelta(days=900),
-            expiry_date=now - timedelta(days=180),
+            manufacturing_date=mfg_pcm_dest,
+            expiry_date=exp_pcm_dest,
             quantity=100,
             unit="STRIPS",
             status=BatchStatus.DESTRUCTION_VERIFIED,

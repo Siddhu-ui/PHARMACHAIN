@@ -1,33 +1,44 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../services/api';
-import { RetailerVerifyResponse } from '../types';
+import { RetailerVerifyResponse, MedicineQRPayload } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { Html5Qrcode } from 'html5-qrcode';
+import QRCode from 'qrcode';
 import confetti from 'canvas-confetti';
 import {
-  ShieldCheck, ShieldAlert, Upload, Image as ImageIcon,
+  ShieldCheck, Upload, Image as ImageIcon,
   CheckCircle2, AlertTriangle, ArrowRight, RefreshCw,
-  Search, FileText, Check, X, Sparkles, MapPin, AlertOctagon,
-  ScanLine, Store, Layers, HelpCircle
+  Check, X, Sparkles, AlertOctagon,
+  ScanLine, Store, Layers
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-type DemoPreset = 'valid' | 'tampered' | 'unknown' | 'expired' | 'reentry';
+type DemoPreset =
+  | 'glyconorm'
+  | 'safe'
+  | 'expiring'
+  | 'expired'
+  | 'respi'
+  | 'pcm'
+  | 'tampered'
+  | 'unknown'
+  | 'reentry';
 
 export const VerifyMedicinePage: React.FC = () => {
   const { currentUser } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Upload & File State
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>('/blister_valid_pcm.svg');
+  const [, setSelectedFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
 
-  // Manual / Detected QR Product ID
-  const [detectedProductId, setDetectedProductId] = useState<string>('PG-PCM-2026-000123');
+  // Manual / Detected QR Product ID & JSON Payload
+  const [detectedProductId, setDetectedProductId] = useState<string>('PG-CS10-2026-003319');
+  const [decodedPayload, setDecodedPayload] = useState<MedicineQRPayload | null>(null);
   const [isQrDetected, setIsQrDetected] = useState<boolean>(true);
   const [isQrScanning, setIsQrScanning] = useState<boolean>(false);
-  const [qrStatusNote, setQrStatusNote] = useState<string>('QR Code decoded from package image');
+  const [qrStatusNote, setQrStatusNote] = useState<string>('QR Code decoded from package metadata');
 
   // Verification state
   const [verifying, setVerifying] = useState(false);
@@ -35,14 +46,210 @@ export const VerifyMedicinePage: React.FC = () => {
   const [activeStep, setActiveStep] = useState<number>(0);
 
   // Preset demo mode
-  const [currentPreset, setCurrentPreset] = useState<DemoPreset>('valid');
+  const [currentPreset, setCurrentPreset] = useState<DemoPreset>('glyconorm');
+
+  // Helper to dynamically calculate expiry days on client side
+  const computeExpiryDays = (expDateStr?: string) => {
+    if (!expDateStr) return { days: 0, status: 'UNKNOWN', isExpired: false, label: 'N/A' };
+
+    let exp: Date;
+    if (expDateStr.includes('/')) {
+      const parts = expDateStr.split('/');
+      exp = parts.length === 3 ? new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`) : new Date(expDateStr);
+    } else {
+      exp = new Date(expDateStr);
+    }
+
+    if (isNaN(exp.getTime())) {
+      return { days: 0, status: 'UNKNOWN', isExpired: false, label: 'N/A' };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    exp.setHours(0, 0, 0, 0);
+
+    const diffDays = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) {
+      const absDays = Math.abs(diffDays);
+      return {
+        days: absDays,
+        status: `Expired ${absDays} day${absDays !== 1 ? 's' : ''} ago`,
+        isExpired: true,
+        label: `${absDays} day${absDays !== 1 ? 's' : ''} expired`
+      };
+    } else if (diffDays === 0) {
+      return {
+        days: 0,
+        status: 'Expires today',
+        isExpired: false,
+        label: 'Expires today'
+      };
+    } else {
+      return {
+        days: diffDays,
+        status: `Expires in ${diffDays} day${diffDays !== 1 ? 's' : ''}`,
+        isExpired: false,
+        label: `${diffDays} day${diffDays !== 1 ? 's' : ''} remaining`
+      };
+    }
+  };
+
+  // Preset definitions
+  const demoConfigs: Record<DemoPreset, {
+    payload: MedicineQRPayload;
+    note: string;
+    overrideImage?: string;
+  }> = {
+    glyconorm: {
+      payload: {
+        product_name: 'GlycoNorm 500 mg Tablets',
+        manufacturer: 'BharatCure Pharma',
+        batch_number: 'CS10-B14-9921',
+        serial_number: 'PG-CS10-2026-003319',
+        manufacturing_date: '2025-08-06',
+        expiry_date: '2026-08-29',
+        quantity: '100 strips'
+      },
+      note: 'Demo Package: GlycoNorm 500 mg Tablets (Batch: CS10-B14-9921)'
+    },
+    safe: {
+      payload: {
+        product_name: 'CardioSafe 10 mg Tablets',
+        manufacturer: 'BharatCure Pharma',
+        batch_number: 'CS10-SAFE',
+        serial_number: 'PG-CS10-2027-009841',
+        manufacturing_date: '2026-01-10',
+        expiry_date: '2027-01-30',
+        quantity: '150 strips'
+      },
+      note: 'Demo Package: CardioSafe 10 mg (Active Shelf Life)'
+    },
+    expiring: {
+      payload: {
+        product_name: 'CardioSafe 10 mg Tablets',
+        manufacturer: 'BharatCure Pharma',
+        batch_number: 'CS10-EXP18',
+        serial_number: 'PG-CS10-2026-004412',
+        manufacturing_date: '2025-10-01',
+        expiry_date: '2026-09-29',
+        quantity: '80 strips'
+      },
+      note: 'Demo Package: CardioSafe 10 mg (Expiring in ~18 days)'
+    },
+    expired: {
+      payload: {
+        product_name: 'CardioSafe 10 mg Tablets',
+        manufacturer: 'BharatCure Pharma',
+        batch_number: 'CS10-A23-2507',
+        serial_number: 'PG-CS10-2026-A232507',
+        manufacturing_date: '2025-07-15',
+        expiry_date: '2026-07-15',
+        quantity: '100 strips'
+      },
+      note: 'Demo Package: CardioSafe 10 mg (Expired Batch - Return Required)'
+    },
+    respi: {
+      payload: {
+        product_name: 'RespiClear 250 mg Capsules',
+        manufacturer: 'BharatCure Pharma',
+        batch_number: 'CS10-C32-8812',
+        serial_number: 'PG-CS10-2026-007721',
+        manufacturing_date: '2025-04-20',
+        expiry_date: '2026-08-20',
+        quantity: '100 strips'
+      },
+      note: 'Demo Package: RespiClear 250 mg Capsules (Batch: CS10-C32-8812)'
+    },
+    pcm: {
+      payload: {
+        product_name: 'Paracetamol 500mg Tablets',
+        manufacturer: 'BharatCure Pharma',
+        batch_number: 'PCM500123',
+        serial_number: 'PG-PCM-2026-500123',
+        manufacturing_date: '2023-08-15',
+        expiry_date: '2026-08-15',
+        quantity: '100 strips'
+      },
+      note: 'Demo Package: Paracetamol 500mg (Batch: PCM500123)'
+    },
+    tampered: {
+      payload: {
+        product_name: 'Paracetamol 500mg Tablets',
+        manufacturer: 'BharatCure Pharma',
+        batch_number: 'PCM500123',
+        serial_number: 'PG-PCM-2026-500123',
+        manufacturing_date: '2023-08-15',
+        expiry_date: '2028-08-15',
+        quantity: '100 strips'
+      },
+      note: 'Demo Package: Altered label expiry (Printed 2028 vs Registered 2026)',
+      overrideImage: '/blister_tampered_pcm.svg'
+    },
+    unknown: {
+      payload: {
+        product_name: 'Counterfeit Medicine',
+        manufacturer: 'Unregistered Entity',
+        batch_number: 'UNKNOWN-001',
+        serial_number: 'PG-UNKNOWN-999',
+        manufacturing_date: '2025-01-01',
+        expiry_date: '2027-01-01',
+        quantity: '50 strips'
+      },
+      note: 'Demo Package: Unregistered identity (Not in database)',
+      overrideImage: '/blister_unknown_fake.svg'
+    },
+    reentry: {
+      payload: {
+        product_name: 'Paracetamol 500mg Tablets',
+        manufacturer: 'BharatCure Pharma',
+        batch_number: 'PCM999888',
+        serial_number: 'PG-PCM-2026-999888',
+        manufacturing_date: '2024-03-01',
+        expiry_date: '2026-03-01',
+        quantity: '100 strips'
+      },
+      note: 'Demo Package: Verified destroyed medicine re-entry (PCM999888)',
+      overrideImage: '/blister_reentry_pcm.svg'
+    }
+  };
+
+  const loadPreset = (preset: DemoPreset) => {
+    setCurrentPreset(preset);
+    setVerifyResult(null);
+    setFileError(null);
+
+    const config = demoConfigs[preset];
+    if (config) {
+      setDecodedPayload(config.payload);
+      setDetectedProductId(config.payload.serial_number);
+      setIsQrDetected(true);
+      setQrStatusNote(config.note);
+
+      if (config.overrideImage) {
+        setImagePreview(config.overrideImage);
+      } else {
+        QRCode.toDataURL(JSON.stringify(config.payload), {
+          width: 280,
+          margin: 2,
+          errorCorrectionLevel: 'M',
+          color: { dark: '#0f172a', light: '#ffffff' }
+        })
+          .then((url: string) => setImagePreview(url))
+          .catch(() => setImagePreview(null));
+      }
+    }
+  };
+
+  // Initialize with GlycoNorm demo preset
+  useEffect(() => {
+    loadPreset('glyconorm');
+  }, []);
 
   // QR Decoder using html5-qrcode scanFile
   const decodeQRFromFile = async (file: File) => {
     setIsQrScanning(true);
     setFileError(null);
 
-    // Create a temporary hidden container if not present
     let tempDiv = document.getElementById('qr-temp-reader');
     if (!tempDiv) {
       tempDiv = document.createElement('div');
@@ -57,32 +264,43 @@ export const VerifyMedicinePage: React.FC = () => {
       html5QrCode.clear();
 
       if (decoded && decoded.trim()) {
-        const pid = decoded.trim();
-        setDetectedProductId(pid);
+        const rawText = decoded.trim();
+        try {
+          const parsed = JSON.parse(rawText);
+          if (parsed.batch_number || parsed.serial_number || parsed.product_name) {
+            setDecodedPayload(parsed);
+            const pid = parsed.serial_number || parsed.product_id || parsed.batch_number || rawText;
+            setDetectedProductId(pid);
+            setIsQrDetected(true);
+            setQrStatusNote(`QR Decoded: ${parsed.product_name || 'Medicine'} (Batch: ${parsed.batch_number || 'N/A'}, EXP: ${parsed.expiry_date || 'N/A'})`);
+            return;
+          }
+        } catch {
+          // Plain text code
+        }
+
+        setDetectedProductId(rawText);
+        setDecodedPayload(null);
         setIsQrDetected(true);
-        setQrStatusNote(`QR Code detected: ${pid}`);
+        setQrStatusNote(`QR Code detected: ${rawText}`);
       } else {
         throw new Error('No QR text found');
       }
     } catch {
-      // Image has no QR or was not readable
-      // If filename contains a known pattern, use it as fallback, else mark QR NOT DETECTED
+      // Image has no QR or was not readable - fallback detection based on filename
       const lower = file.name.toLowerCase();
-      if (lower.includes('pcm999888') || lower.includes('reentry')) {
-        setDetectedProductId('PG-PCM-2026-999888');
-        setIsQrDetected(true);
-        setQrStatusNote('Detected Product ID from package markings: PG-PCM-2026-999888');
+      if (lower.includes('glyconorm') || lower.includes('cs10-b14')) {
+        loadPreset('glyconorm');
+      } else if (lower.includes('pcm999888') || lower.includes('reentry')) {
+        loadPreset('reentry');
       } else if (lower.includes('tamper')) {
-        setDetectedProductId('PG-PCM-2026-500123');
-        setIsQrDetected(true);
-        setQrStatusNote('Detected Product ID from package markings: PG-PCM-2026-500123');
+        loadPreset('tampered');
       } else if (lower.includes('unknown') || lower.includes('fake')) {
-        setDetectedProductId('PG-UNKNOWN-999');
-        setIsQrDetected(true);
-        setQrStatusNote('Detected Product ID: PG-UNKNOWN-999');
+        loadPreset('unknown');
       } else {
         setIsQrDetected(false);
         setDetectedProductId('');
+        setDecodedPayload(null);
         setQrStatusNote('QR CODE NOT DETECTED — Unable to verify Product ID from this image.');
       }
     } finally {
@@ -94,14 +312,12 @@ export const VerifyMedicinePage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate type: PNG, JPG, JPEG, WEBP
     const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       setFileError('Unsupported file format. Please upload PNG, JPG, JPEG, or WEBP.');
       return;
     }
 
-    // Validate size: max 10MB
     if (file.size > 10 * 1024 * 1024) {
       setFileError('File size exceeds 10MB limit. Please upload a smaller image.');
       return;
@@ -120,51 +336,11 @@ export const VerifyMedicinePage: React.FC = () => {
     decodeQRFromFile(file);
   };
 
-  const loadPreset = (preset: DemoPreset) => {
-    setCurrentPreset(preset);
-    setVerifyResult(null);
-    setFileError(null);
-
-    switch (preset) {
-      case 'valid':
-        setImagePreview('/blister_valid_pcm.svg');
-        setDetectedProductId('PG-PCM-2026-000123');
-        setIsQrDetected(true);
-        setQrStatusNote('Demo Package: Paracetamol 500mg (Valid)');
-        break;
-      case 'tampered':
-        setImagePreview('/blister_tampered_pcm.svg');
-        setDetectedProductId('PG-PCM-2026-500123');
-        setIsQrDetected(true);
-        setQrStatusNote('Demo Package: Altered label expiry (Printed 2028 vs Registered 2026)');
-        break;
-      case 'unknown':
-        setImagePreview('/blister_unknown_fake.svg');
-        setDetectedProductId('PG-UNKNOWN-999');
-        setIsQrDetected(true);
-        setQrStatusNote('Demo Package: Unregistered identity');
-        break;
-      case 'expired':
-        setImagePreview('/blister_valid_pcm.svg');
-        setDetectedProductId('PG-PCM-2026-500123');
-        setIsQrDetected(true);
-        setQrStatusNote('Demo Package: Expired batch (Return required)');
-        break;
-      case 'reentry':
-        setImagePreview('/blister_reentry_pcm.svg');
-        setDetectedProductId('PG-PCM-2026-999888');
-        setIsQrDetected(true);
-        setQrStatusNote('Demo Package: Verified destroyed medicine re-entry (PCM999888)');
-        break;
-    }
-  };
-
   const handleRunVerification = async () => {
     setVerifying(true);
     setVerifyResult(null);
     setActiveStep(1);
 
-    // Simulated step animation
     setTimeout(() => setActiveStep(2), 200);
     setTimeout(() => setActiveStep(3), 450);
     setTimeout(() => setActiveStep(4), 700);
@@ -176,12 +352,15 @@ export const VerifyMedicinePage: React.FC = () => {
         printedExpiryOverride = '15/08/2028';
       }
 
+      const qrPayloadString = decodedPayload ? JSON.stringify(decodedPayload) : undefined;
+
       const res = await api.verifyRetailerPackage({
         product_id: detectedProductId,
+        qr_data: qrPayloadString || detectedProductId,
         qr_detected: isQrDetected,
         package_image_url: imagePreview || undefined,
         printed_expiry_override: printedExpiryOverride,
-        location: currentUser?.organization || 'Pharmacy A',
+        location: currentUser?.organization || 'Shree Medicals',
         scanner_role: 'RETAILER'
       });
 
@@ -204,19 +383,32 @@ export const VerifyMedicinePage: React.FC = () => {
     }
   };
 
+  // Helper formatting for displayed values
+  const displayMedicine = verifyResult?.medicine_name || decodedPayload?.product_name || 'GlycoNorm 500 mg Tablets';
+  const displayMfr = verifyResult?.manufacturer || decodedPayload?.manufacturer || 'BharatCure Pharma';
+  const displayBatch = verifyResult?.batch_number || decodedPayload?.batch_number || 'CS10-B14-9921';
+  const displaySerial = verifyResult?.serial_number || verifyResult?.product_id || decodedPayload?.serial_number || 'PG-CS10-2026-003319';
+  const displayMfg = verifyResult?.manufacturing_date || decodedPayload?.manufacturing_date || '06 Aug 2025';
+  const displayExp = verifyResult?.expiry_date || decodedPayload?.expiry_date || '29 Aug 2026';
+  const displayQty = verifyResult?.quantity || decodedPayload?.quantity || '100 strips';
+
+  const clientExpiryCalc = computeExpiryDays(displayExp);
+  const displayExpiryStatus = verifyResult?.current_expiry_status || clientExpiryCalc.status;
+  const isExpiredFinal = verifyResult?.is_expired ?? clientExpiryCalc.isExpired;
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 pb-32">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 uppercase tracking-wider mb-1">
-            <Store className="w-3.5 h-3.5" /> Retailer Portal &bull; Package Verification
+            <Store className="w-3.5 h-3.5" /> Retailer Portal &bull; Medicine QR Verification
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white">
             Verify Medicine Before Sale
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Manual package photo upload &bull; QR identifier detection &bull; Database cross-check &bull; Lifecycle compliance.
+            Scan/Decode QR payload &bull; Authoritative Database Verification &bull; Dynamic Expiry Calculation.
           </p>
         </div>
 
@@ -232,25 +424,85 @@ export const VerifyMedicinePage: React.FC = () => {
       </div>
 
       {/* Demo Preset Selector Bar */}
-      <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+      <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2.5">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Hackathon Demo Presets (Guaranteed Fallback)</span>
+            <span>Select Demo Medicine / Test Case (1-Click QR Setup)</span>
           </span>
-          <span className="text-[10px] text-slate-500 font-mono">100% Deterministic</span>
+          <span className="text-[10px] text-slate-500 font-mono">5-7 Demo Medicines</span>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => loadPreset('valid')}
+            onClick={() => loadPreset('glyconorm')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-              currentPreset === 'valid'
+              currentPreset === 'glyconorm'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
-            <span>🟢 Case A: Valid Paracetamol 500mg</span>
+            <span>🟢 1. GlycoNorm 500mg (CS10-B14-9921)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadPreset('safe')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              currentPreset === 'safe'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>🟢 2. CardioSafe 10mg (CS10-SAFE)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadPreset('expiring')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              currentPreset === 'expiring'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>🟡 3. CardioSafe (CS10-EXP18)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadPreset('expired')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              currentPreset === 'expired'
+                ? 'bg-amber-700 text-white shadow-md shadow-amber-700/30'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>🟠 4. CardioSafe Expired (CS10-A23-2507)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadPreset('respi')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              currentPreset === 'respi'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>🟢 5. RespiClear 250mg (CS10-C32-8812)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadPreset('pcm')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              currentPreset === 'pcm'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>🟢 6. Paracetamol 500mg (PCM500123)</span>
           </button>
 
           <button
@@ -262,31 +514,7 @@ export const VerifyMedicinePage: React.FC = () => {
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
-            <span>🔴 Case B: Label Tampering (2028 vs 2026)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => loadPreset('unknown')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-              currentPreset === 'unknown'
-                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <span>🔴 Case C: Unknown Product</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => loadPreset('expired')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
-              currentPreset === 'expired'
-                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <span>🟠 Case D: Expired Medicine</span>
+            <span>🔴 7. Label Tampering</span>
           </button>
 
           <button
@@ -298,7 +526,19 @@ export const VerifyMedicinePage: React.FC = () => {
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
-            <span>🚨 Case E: Re-Entry Fraud (PCM999888)</span>
+            <span>🚨 8. Re-Entry Fraud (PCM999888)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadPreset('unknown')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+              currentPreset === 'unknown'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            <span>🔴 9. Unknown Product</span>
           </button>
         </div>
       </div>
@@ -317,10 +557,10 @@ export const VerifyMedicinePage: React.FC = () => {
           <div>
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <Upload className="w-4 h-4 text-emerald-400" />
-              <span>Upload Package Image</span>
+              <span>Package QR Code Image</span>
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              Supports PNG, JPG, JPEG, WEBP. Manual file upload only (no camera required).
+              Upload any package photo or select a demo preset above to decode complete metadata.
             </p>
           </div>
 
@@ -335,33 +575,33 @@ export const VerifyMedicinePage: React.FC = () => {
 
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-6 text-center cursor-pointer transition bg-slate-950/40 hover:bg-slate-900"
+            className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-2xl p-5 text-center cursor-pointer transition bg-slate-950/40 hover:bg-slate-900"
           >
             <div className="mx-auto w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 mb-2">
               <ImageIcon className="w-5 h-5" />
             </div>
-            <span className="text-xs font-bold text-white block">Choose Package Photo</span>
-            <span className="text-[11px] text-slate-500 block mt-0.5">Click to browse from your computer</span>
+            <span className="text-xs font-bold text-white block">Upload QR Image / Package Photo</span>
+            <span className="text-[11px] text-slate-500 block mt-0.5">Click to browse from your device</span>
           </div>
 
           {/* Image Preview */}
           {imagePreview && (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-mono">Package Preview:</span>
+                <span className="font-mono">Package / QR Preview:</span>
                 <span className="text-[10px] text-emerald-400 font-bold">Ready for Inspection</span>
               </div>
-              <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center p-3 max-h-72">
+              <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-white flex items-center justify-center p-4 max-h-72">
                 <img
                   src={imagePreview}
-                  alt="Package preview"
-                  className="max-h-64 object-contain rounded-xl"
+                  alt="Package QR Preview"
+                  className="max-h-60 object-contain rounded-xl"
                 />
               </div>
             </div>
           )}
 
-          {/* QR Status & Product ID Resolution */}
+          {/* QR Status & Decoded Metadata Summary */}
           <div className={`p-4 rounded-2xl border text-xs space-y-2 ${
             isQrDetected
               ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
@@ -370,18 +610,29 @@ export const VerifyMedicinePage: React.FC = () => {
             <div className="flex items-center justify-between font-bold">
               <span className="flex items-center gap-1.5 font-mono uppercase text-[11px]">
                 <ScanLine className="w-4 h-4" />
-                <span>STEP 1: QR Detection</span>
+                <span>STEP 1: QR Metadata Decoding</span>
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900">
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                isQrDetected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+              }`}>
                 {isQrDetected ? 'RESOLVED' : 'NOT DETECTED'}
               </span>
             </div>
 
             <p className="text-[11px] text-slate-300">{qrStatusNote}</p>
 
+            {decodedPayload && (
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-[11px] font-mono space-y-1 text-slate-300">
+                <div><span className="text-slate-400">Medicine:</span> <span className="text-white font-bold">{decodedPayload.product_name}</span></div>
+                <div><span className="text-slate-400">Batch:</span> <span className="text-emerald-400">{decodedPayload.batch_number}</span></div>
+                <div><span className="text-slate-400">MFG Date:</span> <span className="text-slate-200">{decodedPayload.manufacturing_date}</span></div>
+                <div><span className="text-slate-400">EXP Date:</span> <span className="text-slate-200">{decodedPayload.expiry_date}</span></div>
+              </div>
+            )}
+
             <div className="pt-1">
               <label className="block text-[10px] font-mono uppercase text-slate-400 mb-1">
-                Resolved Product ID:
+                Resolved Serial / Product ID:
               </label>
               <input
                 type="text"
@@ -390,7 +641,7 @@ export const VerifyMedicinePage: React.FC = () => {
                   setDetectedProductId(e.target.value);
                   setIsQrDetected(!!e.target.value.trim());
                 }}
-                placeholder="e.g. PG-PCM-2026-000123"
+                placeholder="e.g. PG-CS10-2026-003319"
                 className="w-full px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-mono text-emerald-400 outline-none"
               />
             </div>
@@ -401,17 +652,17 @@ export const VerifyMedicinePage: React.FC = () => {
             type="button"
             onClick={handleRunVerification}
             disabled={verifying}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm transition shadow-lg shadow-emerald-600/20"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-sm transition shadow-lg shadow-emerald-600/20 cursor-pointer"
           >
             {verifying ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Executing 5-Step Verification...</span>
+                <span>Decoding QR & Verifying Medicine...</span>
               </>
             ) : (
               <>
                 <ShieldCheck className="w-4 h-4" />
-                <span>Verify Product Before Sale</span>
+                <span>Verify Medicine Before Sale</span>
               </>
             )}
           </button>
@@ -429,7 +680,7 @@ export const VerifyMedicinePage: React.FC = () => {
                 activeStep >= 1 ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300' : 'bg-slate-950 border-slate-800 text-slate-500'
               }`}>
                 <span className="block font-bold">STEP 1</span>
-                <span>QR Detect</span>
+                <span>QR Decode</span>
               </div>
 
               <div className={`p-2 rounded-xl border transition ${
@@ -465,40 +716,39 @@ export const VerifyMedicinePage: React.FC = () => {
           {/* Verification Result Section */}
           {verifyResult ? (
             <div className="space-y-6 animate-in fade-in">
-              {/* Main Banner according to Feature 10 cases */}
-              <div className={`p-6 rounded-3xl border shadow-2xl space-y-4 ${
+              {/* Core Medicine Verification Card (Format Requested) */}
+              <div className={`p-7 rounded-3xl border shadow-2xl space-y-6 ${
                 verifyResult.status_verdict === 'VERIFIED'
-                  ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
-                  : verifyResult.status_verdict === 'REENTRY_FRAUD'
-                  ? 'bg-rose-950/60 border-rose-500 text-rose-200 animate-pulse'
-                  : verifyResult.status_verdict === 'LABEL_TAMPERING'
-                  ? 'bg-rose-950/50 border-rose-500/60 text-rose-200'
+                  ? 'bg-gradient-to-br from-emerald-950/60 to-slate-950 border-emerald-500/60 text-emerald-100'
                   : verifyResult.status_verdict === 'EXPIRED'
-                  ? 'bg-amber-950/40 border-amber-500/50 text-amber-200'
-                  : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
+                  ? 'bg-gradient-to-br from-amber-950/60 to-slate-950 border-amber-500/60 text-amber-100'
+                  : 'bg-gradient-to-br from-rose-950/60 to-slate-950 border-rose-500/60 text-rose-100'
               }`}>
-                <div className="flex items-start justify-between gap-4">
+                {/* Status Header */}
+                <div className="flex items-center justify-between pb-4 border-b border-white/10">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800">
+                    <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 shadow-inner">
                       {verifyResult.status_verdict === 'VERIFIED' ? (
-                        <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                        <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                       ) : verifyResult.status_verdict === 'REENTRY_FRAUD' ? (
-                        <AlertOctagon className="w-8 h-8 text-rose-400 animate-bounce" />
+                        <AlertOctagon className="w-7 h-7 text-rose-400 animate-bounce" />
                       ) : (
-                        <AlertTriangle className="w-8 h-8 text-rose-400" />
+                        <AlertTriangle className="w-7 h-7 text-amber-400" />
                       )}
                     </div>
                     <div>
-                      <span className="text-[11px] font-mono uppercase tracking-widest text-slate-400 block">
-                        PharmaGuard Result State
+                      <span className="text-[11px] font-mono uppercase tracking-widest text-emerald-400 font-bold block">
+                        VERIFICATION RESULT
                       </span>
-                      <h3 className="text-xl font-extrabold text-white">{verifyResult.title}</h3>
+                      <h3 className="text-2xl font-black text-white tracking-wide">
+                        {verifyResult.status_verdict === 'VERIFIED' ? 'MEDICINE VERIFIED' : verifyResult.title}
+                      </h3>
                     </div>
                   </div>
 
                   <div className="text-right font-mono">
                     <span className="text-[10px] text-slate-400 uppercase block">Risk Score</span>
-                    <span className={`text-2xl font-black ${
+                    <span className={`text-xl font-black ${
                       verifyResult.risk_score >= 80 ? 'text-rose-400' : verifyResult.risk_score >= 40 ? 'text-amber-400' : 'text-emerald-400'
                     }`}>
                       {verifyResult.risk_score}/100
@@ -509,22 +759,105 @@ export const VerifyMedicinePage: React.FC = () => {
                   </div>
                 </div>
 
-                <p className="text-sm font-semibold">{verifyResult.message}</p>
-
-                <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
-                  <span className="text-[10px] font-mono uppercase text-slate-400 block mb-0.5">
-                    Recommended Action:
+                {/* Medicine Title */}
+                <div>
+                  <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+                    Product / Medicine Name
                   </span>
-                  <span className="font-bold text-white">{verifyResult.recommendation}</span>
+                  <h2 className="text-2xl font-extrabold text-white mt-1">
+                    {displayMedicine}
+                  </h2>
+                </div>
+
+                {/* Structured Verification Metadata Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 font-mono text-xs">
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80">
+                    <span className="text-[10px] uppercase text-slate-400 block mb-1">Manufacturer:</span>
+                    <span className="text-sm font-bold text-white block">
+                      {displayMfr}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80">
+                    <span className="text-[10px] uppercase text-slate-400 block mb-1">Batch:</span>
+                    <span className="text-sm font-bold text-emerald-400 block">
+                      {displayBatch}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80">
+                    <span className="text-[10px] uppercase text-slate-400 block mb-1">Serial:</span>
+                    <span className="text-sm font-bold text-slate-200 block truncate" title={displaySerial}>
+                      {displaySerial}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80">
+                    <span className="text-[10px] uppercase text-slate-400 block mb-1">Manufactured:</span>
+                    <span className="text-sm font-bold text-white block">
+                      {displayMfg}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80">
+                    <span className="text-[10px] uppercase text-slate-400 block mb-1">Expiry:</span>
+                    <span className="text-sm font-bold text-white block">
+                      {displayExp}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80">
+                    <span className="text-[10px] uppercase text-slate-400 block mb-1">Quantity:</span>
+                    <span className="text-sm font-bold text-white block">
+                      {displayQty}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Expiry Status & Dynamic Calculation Highlight */}
+                <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                  isExpiredFinal
+                    ? 'bg-rose-950/50 border-rose-500/60 text-rose-200'
+                    : 'bg-emerald-950/50 border-emerald-500/60 text-emerald-200'
+                }`}>
+                  <div>
+                    <span className="text-[10px] font-mono uppercase text-slate-400 block">Expiry Status:</span>
+                    <span className="text-base font-extrabold tracking-tight block mt-0.5">
+                      {displayExpiryStatus}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-slate-400 uppercase">
+                      {isExpiredFinal ? 'Days Expired:' : 'Days Remaining:'}
+                    </span>
+                    <span className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-white">
+                      {verifyResult.days_remaining !== undefined
+                        ? `${verifyResult.days_remaining} days`
+                        : clientExpiryCalc.label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Compliance Message & Recommendation */}
+                <div className="space-y-2 pt-1">
+                  <p className="text-sm font-semibold text-slate-200">{verifyResult.message}</p>
+
+                  <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
+                    <span className="text-[10px] font-mono uppercase text-slate-400 block mb-0.5">
+                      Recommended Action:
+                    </span>
+                    <span className="font-bold text-white">{verifyResult.recommendation}</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Side-by-Side Comparison Table (Feature 9) */}
+              {/* Authoritative Ledger Cross-Check Table */}
               {verifyResult.comparison && verifyResult.comparison.length > 0 && (
                 <div className="bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden glass-panel">
                   <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                      Package OCR vs Trusted Manufacturer Record
+                      Package QR / OCR vs Trusted Manufacturer Ledger
                     </h4>
                     <span className="text-[10px] font-mono text-slate-400">Authoritative Ledger</span>
                   </div>
@@ -604,11 +937,11 @@ export const VerifyMedicinePage: React.FC = () => {
             /* Standby State */
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-12 text-center space-y-3 glass-panel">
               <div className="mx-auto w-12 h-12 rounded-2xl bg-slate-800/80 flex items-center justify-center text-slate-400">
-                <ShieldCheck className="w-6 h-6 text-emerald-400" />
+                <Layers className="w-6 h-6 text-emerald-400" />
               </div>
-              <h3 className="text-base font-bold text-white">Awaiting Package Verification</h3>
+              <h3 className="text-base font-bold text-white">Awaiting Medicine QR Verification</h3>
               <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Upload a package photo on the left or select a Hackathon Demo Preset to run the multi-signal compliance analysis.
+                Upload a package QR photo on the left or select a demo medicine above, then click &quot;Verify Medicine Before Sale&quot;.
               </p>
             </div>
           )}

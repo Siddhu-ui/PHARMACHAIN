@@ -236,8 +236,19 @@ export interface ProductRegisterRequest {
   product_id?: string;
 }
 
+export interface MedicineQRPayload {
+  product_name: string;
+  manufacturer: string;
+  batch_number: string;
+  serial_number: string;
+  manufacturing_date: string;
+  expiry_date: string;
+  quantity?: string;
+}
+
 export interface RetailerVerifyRequest {
   product_id?: string;
+  qr_data?: string;
   qr_detected: boolean;
   package_image_url?: string;
   printed_expiry_override?: string;
@@ -255,6 +266,13 @@ export interface RetailerVerifyResponse {
   product_id?: string;
   medicine_name?: string;
   batch_number?: string;
+  serial_number?: string;
+  manufacturing_date?: string;
+  expiry_date?: string;
+  quantity?: string;
+  current_expiry_status?: string;
+  days_remaining?: number;
+  is_expired?: boolean;
   registered_expiry?: string;
   detected_expiry?: string;
   manufacturer?: string;
